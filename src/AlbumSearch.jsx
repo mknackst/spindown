@@ -1,10 +1,21 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 function AlbumSearch({ onAdd, year }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
   const [filterByYear, setFilterByYear] = useState(false)
+  const containerRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setResults([])
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   async function handleSearch() {
     if (!query.trim()) return
@@ -19,7 +30,7 @@ function AlbumSearch({ onAdd, year }) {
   }
 
   return (
-    <div>
+    <div ref={containerRef}>
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
         <input
           type="text"
@@ -27,9 +38,9 @@ function AlbumSearch({ onAdd, year }) {
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSearch()}
-          style={{ flex: 1 }}
+          style={{ flex: 1, fontSize: '1.25rem', padding: '16px 20px' }}
         />
-        <button onClick={handleSearch} style={{ flexShrink: 0 }}>Search</button>
+        <button onClick={handleSearch} style={{ flexShrink: 0, fontSize: '1.25rem', padding: '16px 28px' }}>Search</button>
         {year && (
           <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--muted)', cursor: 'pointer', flexShrink: 0 }}>
             <input type="checkbox" checked={filterByYear} onChange={e => setFilterByYear(e.target.checked)} />
@@ -54,6 +65,14 @@ function AlbumSearch({ onAdd, year }) {
                 background: 'var(--surface)',
               }}
             >
+              <img
+                src={`https://coverartarchive.org/release-group/${album.id}/front-250`}
+                alt=""
+                width={48}
+                height={48}
+                style={{ objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }}
+                onError={e => { e.target.style.display = 'none' }}
+              />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: '500', fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {album.title}

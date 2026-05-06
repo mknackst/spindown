@@ -14,10 +14,9 @@ async function findItunesArt(artist, title) {
   }
 }
 
-function AlbumList({ userId, year, onExport }) {
+function AlbumList({ userId, year }) {
   const [albums, setAlbums] = useState([])
   const [loading, setLoading] = useState(true)
-  const [openScoring, setOpenScoring] = useState(new Set())
   const [dragFrom, setDragFrom] = useState(null)
   const [dragTo, setDragTo] = useState(null)
 
@@ -106,30 +105,18 @@ function AlbumList({ userId, year, onExport }) {
     }
   }
 
-  function toggleScoring(id) {
-    setOpenScoring(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
-  }
-
   if (loading) return <p style={{ color: 'var(--muted)' }}>Loading...</p>
   if (albums.length === 0) return <p style={{ color: 'var(--muted)' }}>No albums yet — search and add some!</p>
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-        <h2>My {year} Year-End List</h2>
-        <button onClick={onExport} style={{ fontSize: '0.8rem' }}>↑ Export for Instagram</button>
-      </div>
+      <h2 style={{ marginBottom: '16px', fontSize: '2rem' }}>My {year} Year-End List</h2>
 
       <DragDropContext onDragEnd={handleDragEnd} onDragUpdate={handleDragUpdate}>
         <Droppable droppableId="album-list">
           {(provided) => (
             <ul {...provided.droppableProps} ref={provided.innerRef}>
               {albums.map((album, index) => {
-                const isOpen = openScoring.has(album.id)
                 return (
                   <Draggable key={album.id} draggableId={album.id} index={index}>
                     {(provided) => (
@@ -142,67 +129,102 @@ function AlbumList({ userId, year, onExport }) {
                           display: 'flex',
                           gap: '16px',
                           alignItems: 'flex-start',
-                          padding: '16px 0',
+                          padding: index === 0 ? '20px 16px' : '16px 0',
+                          marginLeft: index === 0 ? '-16px' : '0',
+                          marginRight: index === 0 ? '-16px' : '0',
                           borderBottom: '1px solid var(--border)',
+                          borderRadius: index === 0 ? '10px' : '0',
+                          background: index === 0 ? 'linear-gradient(135deg, rgba(200,160,60,0.1) 0%, rgba(200,160,60,0.04) 100%)' : 'transparent',
+                          boxShadow: index === 0 ? 'inset 0 0 0 1px rgba(200,160,60,0.25)' : 'none',
+                          cursor: 'grab',
+                          position: 'relative',
                         }}
                       >
-                        <span style={{ width: '48px', flexShrink: 0, textAlign: 'right', color: 'var(--subtle)', fontSize: '1.8rem', fontWeight: '700', paddingTop: '4px', letterSpacing: '-0.03em', lineHeight: 1 }}>
-                          {getDisplayIndex(index) + 1}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, paddingTop: '6px' }}>
+                          <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" style={{ color: 'var(--border-hover)', flexShrink: 0 }}>
+                            <circle cx="3" cy="2.5" r="1.5"/>
+                            <circle cx="3" cy="8" r="1.5"/>
+                            <circle cx="3" cy="13.5" r="1.5"/>
+                            <circle cx="7" cy="2.5" r="1.5"/>
+                            <circle cx="7" cy="8" r="1.5"/>
+                            <circle cx="7" cy="13.5" r="1.5"/>
+                          </svg>
+                          <span style={{ width: '36px', textAlign: 'right', color: index === 0 ? '#c8a03c' : 'var(--subtle)', fontSize: index === 0 ? '2.2rem' : '1.8rem', fontWeight: '700', letterSpacing: '-0.03em', lineHeight: 1 }}>
+                            {getDisplayIndex(index) + 1}
+                          </span>
+                        </div>
 
                         <img
                           src={album.cover_url || `https://coverartarchive.org/release-group/${album.mbid}/front`}
                           alt={album.title}
-                          width={150}
-                          height={150}
-                          style={{ objectFit: 'cover', flexShrink: 0, borderRadius: '4px' }}
+                          width={index === 0 ? 170 : 150}
+                          height={index === 0 ? 170 : 150}
+                          style={{ objectFit: 'cover', flexShrink: 0, borderRadius: index === 0 ? '6px' : '4px', boxShadow: index === 0 ? '0 4px 20px rgba(0,0,0,0.4)' : 'none' }}
                           onError={e => handleCoverError(album.id, album.artist, album.title, e.target)}
                         />
 
+                        <button
+                          onClick={() => handleDelete(album.id)}
+                          title="Remove"
+                          style={{
+                            position: 'absolute', top: '12px', right: '0',
+                            width: '30px', height: '30px',
+                            padding: 0,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '1.1rem', lineHeight: 1,
+                            color: '#e05c5c',
+                            background: 'rgba(224,92,92,0.1)',
+                            border: '1px solid rgba(224,92,92,0.25)',
+                            borderRadius: '50%',
+                            cursor: 'pointer',
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(224,92,92,0.22)'; e.currentTarget.style.borderColor = 'rgba(224,92,92,0.5)' }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(224,92,92,0.1)'; e.currentTarget.style.borderColor = 'rgba(224,92,92,0.25)' }}
+                        >
+                          ×
+                        </button>
+
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: '600', fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {index === 0 && (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.7rem', fontWeight: '600', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#c8a03c', marginBottom: '6px' }}>
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M2 19h20v2H2v-2zm2-9l5 3.5L12 4l3 9.5L20 10l-2 9H6L4 10z"/>
+                              </svg>
+                              Album of the Year
+                            </div>
+                          )}
+                          <div style={{ fontWeight: index === 0 ? '700' : '600', fontSize: index === 0 ? '1.05rem' : '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {album.title}
                           </div>
                           <div style={{ color: 'var(--subtle)', fontSize: '0.85rem', marginBottom: '10px' }}>
                             {album.artist}
                           </div>
 
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                            {album.weighted_score > 0 && (
-                              <span style={{ fontSize: '0.75rem', color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)', padding: '2px 7px', borderRadius: '20px' }}>
-                                {album.weighted_score} / 10
-                              </span>
-                            )}
-                            <button onClick={() => toggleScoring(album.id)}>
-                              {isOpen ? 'Close' : 'Score'}
-                            </button>
-                            <button
-                              onClick={() => handleDelete(album.id)}
-                              style={{ color: 'var(--muted)', borderColor: 'transparent', background: 'transparent' }}
-                            >
-                              Remove
-                            </button>
+                          <div style={{ display: 'flex', gap: '5px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                            {[1,2,3,4,5,6,7,8,9,10].map(n => {
+                              const active = album.weighted_score === n
+                              return (
+                                <button
+                                  key={n}
+                                  onClick={() => handleScoreCommit(album.id, n)}
+                                  style={{
+                                    width: '32px', height: '32px',
+                                    padding: 0,
+                                    fontSize: '0.85rem',
+                                    fontWeight: active ? '700' : '400',
+                                    background: active ? 'var(--text)' : 'var(--surface)',
+                                    color: active ? 'var(--bg)' : 'var(--muted)',
+                                    border: '1px solid',
+                                    borderColor: active ? 'var(--text)' : 'var(--border)',
+                                    borderRadius: '6px',
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {n}
+                                </button>
+                              )
+                            })}
                           </div>
-
-                          {isOpen && (
-                            <div style={{ marginTop: '12px', padding: '14px', background: 'var(--surface)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
-                                <span style={{ fontSize: '0.82rem', color: 'var(--subtle)' }}>Overall score</span>
-                                <strong style={{ fontSize: '0.85rem' }}>{album.weighted_score ?? '—'} / 10</strong>
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ color: 'var(--muted)', fontSize: '0.7rem', flexShrink: 0 }}>1</span>
-                                <input
-                                  type="range" min={1} max={10} step={1}
-                                  value={album.weighted_score ?? 5}
-                                  onChange={e => handleScoreChange(album.id, e.target.value)}
-                                  onMouseUp={e => handleScoreCommit(album.id, e.target.value)}
-                                  style={{ flex: 1 }}
-                                />
-                                <span style={{ color: 'var(--muted)', fontSize: '0.7rem', flexShrink: 0 }}>10</span>
-                              </div>
-                            </div>
-                          )}
 
                           <div style={{ marginTop: '10px' }}>
                             <textarea

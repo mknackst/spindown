@@ -62,6 +62,23 @@ async function loadImage(album) {
   }
 }
 
+async function fetchCoverBlob(album) {
+  if (album.cover_url) {
+    try {
+      return await fetchBlob(proxyUrl(album.cover_url), {
+        headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY },
+      })
+    } catch {}
+  }
+  try {
+    const artUrl = await findItunesArt(album.artist, album.title)
+    if (!artUrl) return null
+    return await fetchBlob(artUrl)
+  } catch {
+    return null
+  }
+}
+
 // ─── Canvas utilities ─────────────────────────────────────────────────────────
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -189,7 +206,7 @@ function drawReviewSlide(ctx, { album, page, totalPages, year, image }) {
     ctx.fillStyle = '#555'; ctx.font = '28px Arial, sans-serif'
     ctx.fillText(`${album.weighted_score} / 10`, lp, y + 28)
   }
-  ctx.fillStyle = '#2e2e2e'; ctx.font = '24px Arial, sans-serif'
+  ctx.fillStyle = '#2e2e2e'; ctx.font = '24px Arial, sans-serif'; ctx.textAlign = 'left'
   ctx.fillText('spindown.app', lp, H - 60)
   if (totalPages > 1) {
     ctx.textAlign = 'right'
@@ -299,15 +316,245 @@ function FormatCard({ title, subtitle, description, preview, onClick, loading, d
         disabled={disabled}
         style={{ width: '100%', padding: '10px', opacity: disabled ? 0.6 : 1, fontSize: '0.875rem' }}
       >
-        {loading ? 'Generating…' : `↓ Export`}
+        {loading ? 'Generating…' : '↓ Export'}
       </button>
+    </div>
+  )
+}
+
+// ─── Bluesky sharing ──────────────────────────────────────────────────────────
+
+const BSKY_BASE = 'https://bsky.social'
+
+async function bskyUploadBlob(accessJwt, blob) {
+  const res = await fetch(`${BSKY_BASE}/xrpc/com.atproto.repo.uploadBlob`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessJwt}`,
+      'Content-Type': blob.type || 'image/jpeg',
+    },
+    body: blob,
+  })
+  if (!res.ok) return null
+  return (await res.json()).blob
+}
+
+async function bskyCreateRecord(accessJwt, did, record) {
+  const res = await fetch(`${BSKY_BASE}/xrpc/com.atproto.repo.createRecord`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${accessJwt}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repo: did, collection: 'app.bsky.feed.post', record }),
+  })
+  if (!res.ok) throw new Error(`Post failed: ${res.status}`)
+  return res.json()
+}
+
+function BlueskyShare({ albums, year, standalone }) {
+  const [handle, setHandle] = useState('')
+  const [password, setPassword] = useState('')
+  const [stage, setStage] = useState('idle') // idle | posting | done | error
+  const [progress, setProgress] = useState(0)
+  const [threadUrl, setThreadUrl] = useState('')
+  const [errorMsg, setErrorMsg] = useState('')
+
+  const total = albums.length + 1
+
+  async function handleShare() {
+    if (!handle || !password) return
+    setStage('posting')
+    setProgress(0)
+    setErrorMsg('')
+
+    try {
+      const authRes = await fetch(`${BSKY_BASE}/xrpc/com.atproto.server.createSession`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: handle.replace(/^@/, ''), password }),
+      })
+      if (!authRes.ok) throw new Error('Login failed — check your handle and app password')
+      const { did, accessJwt } = await authRes.json()
+
+      const blobRefs = await Promise.all(albums.map(async (album) => {
+        try {
+          const blob = await fetchCoverBlob(album)
+          if (!blob) return null
+          return bskyUploadBlob(accessJwt, blob)
+        } catch { return null }
+      }))
+
+      function makePost(text, blobRef, replyRef) {
+        const record = {
+          '$type': 'app.bsky.feed.post',
+          text: text.slice(0, 300),
+          createdAt: new Date().toISOString(),
+        }
+        if (blobRef) {
+          record.embed = {
+            '$type': 'app.bsky.embed.images',
+            images: [{ image: blobRef, alt: '' }],
+          }
+        }
+        if (replyRef) record.reply = replyRef
+        return bskyCreateRecord(accessJwt, did, record)
+      }
+
+      const rootPost = await makePost(`My top ${albums.length} albums of ${year} 🎵`, blobRefs[0], null)
+      const rootRef = { uri: rootPost.uri, cid: rootPost.cid }
+      setProgress(1)
+
+      let parentRef = rootRef
+      for (let i = 0; i < albums.length; i++) {
+        const a = albums[i]
+        const header = `#${a.rank} ${a.title} — ${a.artist}`
+        const scoreStr = a.weighted_score > 0 ? `\n${a.weighted_score}/10` : ''
+        const budget = 298 - header.length - scoreStr.length - 2
+        const reviewStr = a.review && budget > 20
+          ? `\n\n${a.review.slice(0, budget)}${a.review.length > budget ? '…' : ''}`
+          : ''
+        const post = await makePost(`${header}${scoreStr}${reviewStr}`, blobRefs[i], { root: rootRef, parent: parentRef })
+        parentRef = { uri: post.uri, cid: post.cid }
+        setProgress(i + 2)
+      }
+
+      const cleanHandle = handle.replace(/^@/, '')
+      const rkey = rootPost.uri.split('/').pop()
+      setThreadUrl(`https://bsky.app/profile/${cleanHandle}/post/${rkey}`)
+      setStage('done')
+    } catch (err) {
+      setErrorMsg(err.message)
+      setStage('error')
+    }
+  }
+
+  const bskyLogo = (
+    <svg width="28" height="28" viewBox="0 0 568 501" fill="#0085ff">
+      <path d="M123.121 33.664C188.241 82.553 258.281 181.68 284 234.873c25.719-53.192 95.759-152.32 160.879-201.209C491.866-1.611 568-28.906 568 57.947c0 17.346-9.945 145.713-15.778 166.555-20.275 72.453-94.155 90.933-159.875 79.748C507.222 323.8 536.444 388.997 473.333 454c-105.213 108.01-150.765-27.097-162.078-61.768-2.117-6.215-3.107-9.13-3.255-6.658-.149-2.472-1.139.443-3.255 6.658C293.431 426.903 248 562.01 142.667 454 79.556 388.997 108.778 323.8 223.653 304.25c-65.72 11.185-139.6-7.295-159.875-79.748C57.945 203.66 48 75.293 48 57.947c0-86.853 76.134-59.558 75.121-24.283z"/>
+    </svg>
+  )
+
+  if (stage === 'done') {
+    return (
+      <div style={standalone ? {} : { marginTop: '48px', paddingTop: '40px', borderTop: '1px solid var(--border)' }}>
+        <div style={{ maxWidth: '440px', border: '1px solid var(--border)', borderRadius: '12px', padding: '32px', background: 'var(--surface)', textAlign: 'center' }}>
+          <div style={{ fontSize: '2rem', marginBottom: '12px' }}>🎉</div>
+          <div style={{ fontWeight: '700', fontSize: '1.05rem', marginBottom: '8px' }}>Thread posted!</div>
+          <p style={{ color: 'var(--muted)', fontSize: '0.875rem', marginBottom: '24px' }}>
+            Your {year} year-end list is now live on Bluesky.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <a href={threadUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+              <button style={{ width: '100%', padding: '12px', fontSize: '0.95rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                {bskyLogo} View on Bluesky →
+              </button>
+            </a>
+            <button
+              onClick={() => { setStage('idle'); setPassword('') }}
+              style={{ width: '100%', color: 'var(--muted)', borderColor: 'transparent', background: 'transparent', fontSize: '0.85rem' }}
+            >
+              Post again
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const posting = stage === 'posting'
+
+  return (
+    <div style={standalone ? {} : { marginTop: '48px', paddingTop: '40px', borderTop: '1px solid var(--border)' }}>
+      <div style={{ maxWidth: '440px', border: '1px solid var(--border)', borderRadius: '12px', padding: '32px', background: 'var(--surface)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+          {bskyLogo}
+          <div style={{ fontWeight: '700', fontSize: '1.1rem' }}>Connect your Bluesky account</div>
+        </div>
+        <p style={{ color: 'var(--muted)', fontSize: '0.875rem', marginBottom: '24px', lineHeight: '1.55' }}>
+          Posts your {year} list as a thread — one post per album with cover art attached.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--subtle)', marginBottom: '6px', fontWeight: '500' }}>
+              Bluesky handle
+            </label>
+            <input
+              type="text"
+              placeholder="you.bsky.social"
+              value={handle}
+              onChange={e => setHandle(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleShare()}
+              disabled={posting}
+              style={{ display: 'block', width: '100%' }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--subtle)', marginBottom: '6px', fontWeight: '500' }}>
+              App password
+            </label>
+            <input
+              type="password"
+              placeholder="xxxx-xxxx-xxxx-xxxx"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleShare()}
+              disabled={posting}
+              style={{ display: 'block', width: '100%', fontFamily: 'monospace', letterSpacing: '0.05em' }}
+            />
+            <p style={{ fontSize: '0.75rem', color: 'var(--muted)', margin: '6px 0 0' }}>
+              Not your main password —{' '}
+              <a href="https://bsky.app/settings/app-passwords" target="_blank" rel="noopener noreferrer">
+                create an app password in Settings
+              </a>
+            </p>
+          </div>
+
+          <button
+            onClick={handleShare}
+            disabled={posting || !handle || !password}
+            style={{
+              width: '100%',
+              padding: '12px',
+              fontSize: '0.95rem',
+              opacity: posting || !handle || !password ? 0.55 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              marginTop: '4px',
+            }}
+          >
+            {posting ? (
+              <>Posting… ({progress} / {total})</>
+            ) : (
+              <>{bskyLogo} Post to Bluesky</>
+            )}
+          </button>
+
+          {posting && (
+            <div style={{ height: '4px', borderRadius: '2px', background: 'var(--border)', overflow: 'hidden' }}>
+              <div style={{
+                height: '100%',
+                borderRadius: '2px',
+                background: '#0085ff',
+                width: `${(progress / total) * 100}%`,
+                transition: 'width 0.3s ease',
+              }} />
+            </div>
+          )}
+
+          {stage === 'error' && (
+            <p style={{ color: '#e05c5c', fontSize: '0.85rem', margin: 0 }}>{errorMsg}</p>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
 
 // ─── Export page ──────────────────────────────────────────────────────────────
 
-function ExportPage({ userId, year }) {
+function ExportPage({ userId, year, section }) {
   const [albums, setAlbums] = useState([])
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(null)
@@ -360,6 +607,10 @@ function ExportPage({ userId, year }) {
   }
 
   if (loading) return <p style={{ color: 'var(--muted)' }}>Loading…</p>
+
+  if (section === 'bluesky') {
+    return <BlueskyShare albums={albums} year={year} standalone />
+  }
 
   return (
     <div>
