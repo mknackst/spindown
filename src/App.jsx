@@ -1,25 +1,46 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import Auth from './Auth'
+import AlbumSearch from './AlbumSearch'
 
 function App() {
-  const [status, setStatus] = useState('Connecting...')
+  const [session, setSession] = useState(null)
 
   useEffect(() => {
-    async function testConnection() {
-      const { data, error } = await supabase.auth.getSession()
-      if (error) {
-        setStatus('❌ Error: ' + error.message)
-      } else {
-        setStatus('✅ Supabase connected')
-      }
-    }
-    testConnection()
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+    })
+    supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+    })
   }, [])
+
+  async function handleAddAlbum(album) {
+    const { error } = await supabase.from('albums').insert({
+      user_id: session.user.id,
+      title: album.title,
+      artist: album.artist,
+      mbid: album.mbid,
+      cover_url: album.cover_url,
+      rank: 0,
+      weighted_score: 0
+    })
+    if (error) console.error(error)
+    else alert(`${album.title} added to your list!`)
+  }
 
   return (
     <div>
       <h1>Spindown</h1>
-      <p>{status}</p>
+      {session ? (
+        <>
+          <p>Welcome, {session.user.email}</p>
+          <button onClick={() => supabase.auth.signOut()}>Sign out</button>
+          <AlbumSearch onAdd={handleAddAlbum} />
+        </>
+      ) : (
+        <Auth />
+      )}
     </div>
   )
 }
