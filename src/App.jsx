@@ -35,6 +35,11 @@ function App() {
   }
 
   async function handleAddAlbum(album) {
+    const { count } = await supabase
+      .from('albums')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', session.user.id)
+      .eq('year', selectedYear)
     const { error } = await supabase.from('albums').insert({
       user_id: session.user.id,
       title: album.title,
@@ -42,7 +47,7 @@ function App() {
       mbid: album.mbid,
       cover_url: album.cover_url,
       year: selectedYear,
-      rank: 0,
+      rank: (count ?? 0) + 1,
       weighted_score: 0
     })
     if (error) { console.error(error); return }

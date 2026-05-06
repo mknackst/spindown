@@ -23,6 +23,26 @@ async function mbAlbumsForYear(artist, year) {
   )
 }
 
+async function itunesAlbumsForYear(artist, year) {
+  try {
+    const q = encodeURIComponent(artist)
+    const res = await fetch(`https://itunes.apple.com/search?term=${q}&entity=album&attribute=artistTerm&limit=25`)
+    const data = await res.json()
+    return (data.results || []).filter(r =>
+      r.wrapperType === 'collection' &&
+      (r.releaseDate || '').startsWith(String(year))
+    ).map(r => ({
+      id: null,
+      title: r.collectionName,
+      'artist-credit': [{ name: r.artistName }],
+      'first-release-date': r.releaseDate?.slice(0, 10) || '',
+      cover_url: r.artworkUrl100?.replace('100x100bb', '600x600bb') || null,
+    }))
+  } catch {
+    return []
+  }
+}
+
 
 export async function generateRecommendations(userId, year) {
   if (!LASTFM_KEY) { console.warn('[recs] VITE_LASTFM_API_KEY is not set'); return }
@@ -77,17 +97,22 @@ export async function generateRecommendations(userId, year) {
   for (const artist of [...similarArtists].slice(0, 20)) {
     if (recommendations.length >= needed) break
 
-    const mbResults = await mbAlbumsForYear(artist, year)
-    for (const rg of mbResults) {
-      const key = `${artist}|||${rg.title}`.toLowerCase()
+    let results = await mbAlbumsForYear(artist, year)
+    if (results.length === 0) results = await itunesAlbumsForYear(artist, year)
+
+    for (const rg of results) {
+      const title = rg.title
+      const artistName = rg['artist-credit']?.[0]?.name || artist
+      const key = `${artistName}|||${title}`.toLowerCase()
       if (skip.has(key)) continue
       recommendations.push({
         user_id: userId, year,
-        mbid: rg.id,
-        title: rg.title,
-        artist: rg['artist-credit']?.[0]?.name || artist,
-        cover_url: `https://coverartarchive.org/release-group/${rg.id}/front`,
+        mbid: rg.id || null,
+        title,
+        artist: artistName,
+        cover_url: rg.cover_url || (rg.id ? `https://coverartarchive.org/release-group/${rg.id}/front` : null),
         status: 'pending',
+        reason: artist,
       })
       skip.add(key)
       break

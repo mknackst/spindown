@@ -6,10 +6,18 @@ const CORS = {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
-  const imageUrl = new URL(req.url).searchParams.get('url')
+  const params = new URL(req.url).searchParams
+  const imageUrl = params.get('url')
   if (!imageUrl) return new Response('Missing url', { status: 400, headers: CORS })
 
   try {
+    if (params.get('check')) {
+      const res = await fetch(imageUrl, { method: 'HEAD' })
+      return new Response(JSON.stringify({ ok: res.ok }), {
+        headers: { ...CORS, 'Content-Type': 'application/json' },
+      })
+    }
+
     const res = await fetch(imageUrl)
     if (!res.ok) return new Response('Upstream error', { status: res.status, headers: CORS })
     const blob = await res.blob()

@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
+import { checkPitchforkUrl } from './pitchfork'
+
+const PLATFORMS = [
+  { id: 'spotify',  name: 'Spotify',     color: '#1DB954', search: (a, t) => `https://open.spotify.com/search/${encodeURIComponent(a + ' ' + t)}` },
+  { id: 'apple',    name: 'Apple Music', color: '#FC3C44', search: (a, t) => `https://music.apple.com/search?term=${encodeURIComponent(a + ' ' + t)}` },
+  { id: 'bandcamp', name: 'Bandcamp',    color: '#1DA0C3', search: (a, t) => `https://bandcamp.com/search?q=${encodeURIComponent(a + ' ' + t)}` },
+  { id: 'qobuz',    name: 'Qobuz',       color: '#002DAA', search: (a, t) => `https://www.qobuz.com/search?q=${encodeURIComponent(a + ' ' + t)}` },
+]
 
 async function findItunesArt(artist, title) {
   try {
@@ -24,9 +32,47 @@ function AlbumList({ userId, year }) {
   const triedItunesRef = useRef(new Set())
   useEffect(() => { albumsRef.current = albums }, [albums])
 
+  const [platformLinks, setPlatformLinks] = useState({})
+  const fetchedIdsRef = useRef(new Set())
+
   useEffect(() => {
     fetchAlbums()
   }, [])
+
+  useEffect(() => {
+    if (albums.length === 0) return
+    let cancelled = false
+    const toFetch = albums.filter(a => !fetchedIdsRef.current.has(a.id))
+    if (toFetch.length === 0) return
+    toFetch.forEach(a => fetchedIdsRef.current.add(a.id))
+
+    async function fetchAppleLinks() {
+      for (const album of toFetch) {
+        if (cancelled) break
+        try {
+          const q = encodeURIComponent(`${album.artist} ${album.title}`)
+          const res = await fetch(`https://itunes.apple.com/search?term=${q}&entity=album&limit=1`)
+          const data = await res.json()
+          const url = data.results?.[0]?.collectionViewUrl
+          if (url && !cancelled) setPlatformLinks(prev => ({ ...prev, [album.id]: { ...prev[album.id], apple: url } }))
+        } catch {}
+        await new Promise(r => setTimeout(r, 200))
+      }
+    }
+
+    async function fetchPitchforkLinks() {
+      for (const album of toFetch) {
+        if (cancelled) break
+        const url = await checkPitchforkUrl(album.artist, album.title)
+        if (url && !cancelled) setPlatformLinks(prev => ({ ...prev, [album.id]: { ...prev[album.id], pitchfork: url } }))
+        await new Promise(r => setTimeout(r, 300))
+      }
+    }
+
+    fetchAppleLinks()
+    fetchPitchforkLinks()
+    return () => { cancelled = true }
+  }, [albums])
 
   async function fetchAlbums() {
     const { data, error } = await supabase
@@ -198,6 +244,55 @@ function AlbumList({ userId, year }) {
                           </div>
                           <div style={{ color: 'var(--subtle)', fontSize: '0.85rem', marginBottom: '10px' }}>
                             {album.artist}
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px', alignItems: 'center' }}>
+                            {PLATFORMS.map(p => {
+                              const directUrl = platformLinks[album.id]?.[p.id]
+                              const href = directUrl || p.search(album.artist, album.title)
+                              const isDirect = !!directUrl
+                              return (
+                                <a
+                                  key={p.id}
+                                  href={href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title={isDirect ? `Open on ${p.name}` : `Search on ${p.name}`}
+                                  onMouseEnter={e => { e.currentTarget.style.borderColor = p.color; e.currentTarget.style.color = p.color }}
+                                  onMouseLeave={e => { e.currentTarget.style.borderColor = isDirect ? p.color + '55' : 'var(--border)'; e.currentTarget.style.color = isDirect ? p.color : 'var(--muted)' }}
+                                  style={{
+                                    fontSize: '0.72rem',
+                                    fontWeight: '500',
+                                    color: isDirect ? p.color : 'var(--muted)',
+                                    border: `1px solid ${isDirect ? p.color + '55' : 'var(--border)'}`,
+                                    borderRadius: '20px',
+                                    padding: '3px 9px',
+                                    textDecoration: 'none',
+                                    transition: 'color 0.15s, border-color 0.15s',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {p.name}
+                                </a>
+                              )
+                            })}
+                          </div>
+                          <div style={{ marginBottom: '12px' }}>
+                            <a
+                              href={platformLinks[album.id]?.pitchfork || `https://rateyourmusic.com/search?searchterm=${encodeURIComponent(album.artist + ' ' + album.title)}&searchtype=l`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
+                              onMouseLeave={e => e.currentTarget.style.color = 'var(--muted)'}
+                              style={{
+                                fontSize: '0.78rem',
+                                color: 'var(--muted)',
+                                textDecoration: 'none',
+                                transition: 'color 0.15s',
+                              }}
+                            >
+                              Read more →
+                            </a>
                           </div>
 
                           <div style={{ display: 'flex', gap: '5px', marginBottom: '10px', flexWrap: 'wrap' }}>

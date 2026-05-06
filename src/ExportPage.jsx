@@ -240,7 +240,14 @@ const PREVIEW_BG = {
   ].join(','),
 }
 
-function GridPreview({ year }) {
+function CoverThumb({ src, size = 26 }) {
+  const [failed, setFailed] = useState(false)
+  if (!src || failed) return <div style={{ width: size, height: size, background: '#1e1e1e', borderRadius: 2, flexShrink: 0, border: '1px solid #2a2a2a' }} />
+  return <img src={src} alt="" width={size} height={size} style={{ objectFit: 'cover', borderRadius: 2, flexShrink: 0, display: 'block' }} onError={() => setFailed(true)} />
+}
+
+function GridPreview({ year, albums }) {
+  const rows = albums.slice(0, 5)
   return (
     <div style={{
       ...PREVIEW_BG,
@@ -255,13 +262,13 @@ function GridPreview({ year }) {
       <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.1, marginBottom: 14 }}>
         {year}<br />Year-End List
       </div>
-      {[1, 2, 3, 4, 5].map(i => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-          <span style={{ width: 10, textAlign: 'right', color: '#2e2e2e', fontWeight: 700, fontSize: 8, flexShrink: 0 }}>{i}</span>
-          <div style={{ width: 26, height: 26, background: '#1e1e1e', borderRadius: 2, flexShrink: 0, border: '1px solid #2a2a2a' }} />
+      {rows.map((album, i) => (
+        <div key={album.id} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+          <span style={{ width: 10, textAlign: 'right', color: '#444', fontWeight: 700, fontSize: 8, flexShrink: 0 }}>{i + 1}</span>
+          <CoverThumb src={album.cover_url} size={26} />
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 6.5, fontWeight: 600, color: '#e0e0e0' }}>Album Title</div>
-            <div style={{ fontSize: 5.5, color: '#666', marginTop: 1 }}>Artist Name</div>
+            <div style={{ fontSize: 6.5, fontWeight: 600, color: '#e0e0e0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{album.title}</div>
+            <div style={{ fontSize: 5.5, color: '#666', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{album.artist}</div>
           </div>
         </div>
       ))}
@@ -270,7 +277,8 @@ function GridPreview({ year }) {
   )
 }
 
-function ReviewPreview({ year }) {
+function ReviewPreview({ year, albums }) {
+  const album = albums[0]
   return (
     <div style={{
       ...PREVIEW_BG,
@@ -283,11 +291,21 @@ function ReviewPreview({ year }) {
     }}>
       <div style={{ fontSize: 5, color: '#555', marginBottom: 5 }}>SPINDOWN  •  {year} Year-End List</div>
       <div style={{ fontSize: 20, fontWeight: 700, color: '#1e1e1e', letterSpacing: '-0.02em', lineHeight: 1, marginBottom: 2 }}>#1</div>
-      <div style={{ fontSize: 8.5, fontWeight: 700, marginBottom: 1 }}>Album Title</div>
-      <div style={{ fontSize: 7, color: '#777', marginBottom: 7 }}>Artist Name</div>
-      <div style={{ width: '100%', height: 110, background: '#1a1a1a', borderRadius: 3, marginBottom: 8, flexShrink: 0, border: '1px solid #2a2a2a' }} />
+      <div style={{ fontSize: 8.5, fontWeight: 700, marginBottom: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {album?.title ?? 'Album Title'}
+      </div>
+      <div style={{ fontSize: 7, color: '#777', marginBottom: 7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {album?.artist ?? 'Artist Name'}
+      </div>
+      {album?.cover_url
+        ? <img src={album.cover_url} alt="" style={{ width: '100%', height: 110, objectFit: 'cover', borderRadius: 3, marginBottom: 8, flexShrink: 0, display: 'block' }} />
+        : <div style={{ width: '100%', height: 110, background: '#1a1a1a', borderRadius: 3, marginBottom: 8, flexShrink: 0, border: '1px solid #2a2a2a' }} />
+      }
       <div style={{ fontSize: 6, color: '#aaa', lineHeight: 1.6, fontStyle: 'italic', flex: 1, overflow: 'hidden' }}>
-        "A thoughtful and deeply moving record that stays with you long after the last track fades away..."
+        {album?.review
+          ? `"${album.review}"`
+          : '"A thoughtful and deeply moving record that stays with you long after the last track fades away..."'
+        }
       </div>
       <div style={{ paddingTop: 6, fontSize: 5.5, color: '#2a2a2a' }}>spindown.app</div>
     </div>
@@ -298,27 +316,33 @@ function ReviewPreview({ year }) {
 
 function FormatCard({ title, subtitle, description, preview, onClick, loading, disabled }) {
   return (
-    <div style={{
-      border: '1px solid var(--border)',
-      borderRadius: '10px',
-      padding: '28px 24px',
-      background: 'var(--surface)',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px',
-    }}>
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        border: '1px solid var(--border)',
+        borderRadius: '10px',
+        padding: '28px 24px',
+        background: loading ? 'var(--surface-raised, #2a2a2a)' : 'var(--surface)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px',
+        cursor: disabled ? 'default' : 'pointer',
+        opacity: disabled && !loading ? 0.6 : 1,
+        textAlign: 'center',
+        width: '100%',
+        transition: 'border-color 0.15s',
+      }}
+      onMouseEnter={e => { if (!disabled) e.currentTarget.style.borderColor = 'var(--border-hover)' }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
+    >
       {preview}
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ fontWeight: '700', fontSize: '1rem', marginBottom: '4px' }}>{title}</div>
+      <div>
+        <div style={{ fontWeight: '700', fontSize: '1rem', marginBottom: '4px' }}>
+          {loading ? 'Generating…' : title}
+        </div>
         <div style={{ fontSize: '0.78rem', color: 'var(--accent)', marginBottom: '8px', fontWeight: '500' }}>{subtitle}</div>
         <div style={{ fontSize: '0.85rem', color: 'var(--muted)', lineHeight: '1.55' }}>{description}</div>
       </div>
-      <button
-        onClick={onClick}
-        disabled={disabled}
-        style={{ width: '100%', padding: '10px', opacity: disabled ? 0.6 : 1, fontSize: '0.875rem' }}
-      >
-        {loading ? 'Generating…' : '↓ Export'}
-      </button>
-    </div>
+    </button>
   )
 }
 
@@ -627,7 +651,7 @@ function ExportPage({ userId, year, section }) {
           title="Grid"
           subtitle={`5 albums per image · ${Math.ceil(albums.length / PER_SLIDE)} image${Math.ceil(albums.length / PER_SLIDE) !== 1 ? 's' : ''}`}
           description="Your full ranked list at a glance — best for a quick share of your top picks."
-          preview={<GridPreview year={year} />}
+          preview={<GridPreview year={year} albums={albums} />}
           onClick={() => handleExport('grid')}
           loading={exporting === 'grid'}
           disabled={!!exporting}
@@ -636,7 +660,7 @@ function ExportPage({ userId, year, section }) {
           title="With Reviews"
           subtitle={`1 album per image · ${albums.length} image${albums.length !== 1 ? 's' : ''}`}
           description="One album per image with your mini-review — best for sharing the story behind each pick."
-          preview={<ReviewPreview year={year} />}
+          preview={<ReviewPreview year={year} albums={albums} />}
           onClick={() => handleExport('review')}
           loading={exporting === 'review'}
           disabled={!!exporting}
