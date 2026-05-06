@@ -5,6 +5,7 @@ import Dashboard from './Dashboard'
 import AlbumSearch from './AlbumSearch'
 import AlbumList from './AlbumList'
 import ListeningQueue from './ListeningQueue'
+import ExportPage from './ExportPage'
 import { generateRecommendations } from './recommendations'
 
 function App() {
@@ -25,6 +26,10 @@ function App() {
   function openList(year) {
     setSelectedYear(year)
     setView('list')
+  }
+
+  function openExport() {
+    setView('export')
   }
 
   async function handleAddAlbum(album) {
@@ -53,13 +58,20 @@ function App() {
           >
             Spindown
           </h1>
-          {view === 'list' && session && (
+          {(view === 'list' || view === 'export') && session && (
             <>
               <span style={{ color: 'var(--border-hover)' }}>/</span>
               <span style={{ color: 'var(--subtle)', fontSize: '0.95rem' }}>{selectedYear}</span>
-              <button onClick={() => setView('dashboard')} style={{ fontSize: '0.75rem', color: 'var(--muted)', borderColor: 'transparent', background: 'transparent' }}>
-                ← All lists
-              </button>
+              {view === 'list' && (
+                <button onClick={() => setView('dashboard')} style={{ fontSize: '0.75rem', color: 'var(--muted)', borderColor: 'transparent', background: 'transparent' }}>
+                  ← All lists
+                </button>
+              )}
+              {view === 'export' && (
+                <button onClick={() => setView('list')} style={{ fontSize: '0.75rem', color: 'var(--muted)', borderColor: 'transparent', background: 'transparent' }}>
+                  ← Back to list
+                </button>
+              )}
             </>
           )}
         </div>
@@ -73,6 +85,10 @@ function App() {
 
       {!session && <Auth />}
 
+      {session && view === 'export' && (
+        <ExportPage userId={session.user.id} year={selectedYear} />
+      )}
+
       {session && view === 'dashboard' && (
         <Dashboard userId={session.user.id} onOpenList={openList} />
       )}
@@ -82,7 +98,7 @@ function App() {
           <AlbumSearch onAdd={handleAddAlbum} year={selectedYear} />
           <div style={{ display: 'flex', gap: '40px', alignItems: 'flex-start', marginTop: '32px' }}>
             <div style={{ flex: '1 1 0', minWidth: 0 }}>
-              <AlbumList key={`${refreshList}-${selectedYear}`} userId={session.user.id} year={selectedYear} />
+              <AlbumList key={`${refreshList}-${selectedYear}`} userId={session.user.id} year={selectedYear} onExport={openExport} />
             </div>
             <div style={{ flex: '0 0 300px', position: 'sticky', top: '24px', maxHeight: '90vh', overflowY: 'auto' }}>
               <ListeningQueue userId={session.user.id} onAdd={handleAddAlbum} refreshTrigger={queueRefresh} year={selectedYear} />
