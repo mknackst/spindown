@@ -30,8 +30,7 @@ function sortAndRank(albumList, weights) {
     .map((a, i) => ({ ...a, rank: i + 1 }))
 }
 
-
-function AlbumList({ userId }) {
+function AlbumList({ userId, year }) {
   const [albums, setAlbums] = useState([])
   const [loading, setLoading] = useState(true)
   const [weights, setWeights] = useState(DEFAULT_WEIGHTS)
@@ -56,6 +55,7 @@ function AlbumList({ userId }) {
       .from('albums')
       .select('*')
       .eq('user_id', userId)
+      .eq('year', year)
       .order('rank', { ascending: true })
     if (error) console.error(error)
     else setAlbums(data)
@@ -127,7 +127,7 @@ function AlbumList({ userId }) {
     }
   }
 
-function handleReviewChange(id, review) {
+  function handleReviewChange(id, review) {
     setAlbums(albums.map(a => a.id === id ? { ...a, review } : a))
   }
 
@@ -160,120 +160,139 @@ function handleReviewChange(id, review) {
     })
   }
 
-  if (loading) return <p>Loading your list...</p>
-  if (albums.length === 0) return <p>No albums yet — search and add some!</p>
+  if (loading) return <p style={{ color: 'var(--muted)' }}>Loading...</p>
+  if (albums.length === 0) return <p style={{ color: 'var(--muted)' }}>No albums yet — search and add some!</p>
 
   return (
     <div>
-      <div style={{ marginBottom: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+        <h2>My List</h2>
         <button onClick={() => setWeightsOpen(o => !o)}>
-          {weightsOpen ? '▲' : '▼'} Category Weights
+          ⚙ {weightsOpen ? 'Hide weights' : 'Sort weights'}
         </button>
-        {weightsOpen && (
-          <div style={{ marginTop: '8px', padding: '12px', background: '#1a1a1a', borderRadius: '4px' }}>
-            <div style={{ marginBottom: '8px' }}>
-              <label>Relistened: {weights.score_relisten}</label>
-              <input
-                type="range" min={0} max={10} value={weights.score_relisten}
-                onChange={e => setWeights(w => ({ ...w, score_relisten: Number(e.target.value) }))}
-                onMouseUp={e => handleWeightCommit('score_relisten', e.target.value)}
-                style={{ display: 'block', width: '100%' }}
-              />
-            </div>
-            {SCORE_FIELDS.map(({ key, label }) => (
-              <div key={key} style={{ marginBottom: '8px' }}>
-                <label>{label}: {weights[key]}</label>
-                <input
-                  type="range" min={0} max={10} value={weights[key]}
-                  onChange={e => setWeights(w => ({ ...w, [key]: Number(e.target.value) }))}
-                  onMouseUp={e => handleWeightCommit(key, e.target.value)}
-                  style={{ display: 'block', width: '100%' }}
-                />
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
-      <h2>My List</h2>
+      {weightsOpen && (
+        <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--surface)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ fontSize: '0.8rem', color: 'var(--subtle)', display: 'block', marginBottom: '4px' }}>
+              Relistened — {weights.score_relisten}
+            </label>
+            <input type="range" min={0} max={10} value={weights.score_relisten}
+              onChange={e => setWeights(w => ({ ...w, score_relisten: Number(e.target.value) }))}
+              onMouseUp={e => handleWeightCommit('score_relisten', e.target.value)}
+            />
+          </div>
+          {SCORE_FIELDS.map(({ key, label }) => (
+            <div key={key} style={{ marginBottom: '12px' }}>
+              <label style={{ fontSize: '0.8rem', color: 'var(--subtle)', display: 'block', marginBottom: '4px' }}>
+                {label} — {weights[key]}
+              </label>
+              <input type="range" min={0} max={10} value={weights[key]}
+                onChange={e => setWeights(w => ({ ...w, [key]: Number(e.target.value) }))}
+                onMouseUp={e => handleWeightCommit(key, e.target.value)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
       <DragDropContext onDragEnd={handleDragEnd} onDragUpdate={handleDragUpdate}>
         <Droppable droppableId="album-list">
           {(provided) => (
             <ul {...provided.droppableProps} ref={provided.innerRef}>
-              {albums.map((album, index) => (
-                <Draggable key={album.id} draggableId={album.id} index={index}>
-                  {(provided) => (
-                    <li
-                      ref={provided.innerRef}
-                      {...provided.draggableProps}
-                      {...provided.dragHandleProps}
-                      style={{ ...provided.draggableProps.style, display: 'flex', gap: '12px', alignItems: 'flex-start', padding: '12px 0', borderBottom: '1px solid #2a2a2a' }}
-                    >
-                      <img
-                        src={album.cover_url || `https://coverartarchive.org/release-group/${album.mbid}/front`}
-                        alt={album.title}
-                        width={64}
-                        height={64}
-                        style={{ objectFit: 'cover', flexShrink: 0 }}
-                        onError={e => { e.target.style.display = 'none' }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
-                          <span>#{getDisplayIndex(index) + 1}</span>
-                          <strong>{album.title}</strong>
-                          <span style={{ color: '#aaa' }}>— {album.artist}</span>
-                          {computeWeightedScore(album, weights) > 0 && (
-                            <span style={{ color: '#888', fontSize: '0.85rem' }}>
-                              Score: {computeWeightedScore(album, weights).toFixed(1)}
-                            </span>
-                          )}
-                          <button onClick={() => toggleScoring(album.id)} style={{ marginLeft: 'auto' }}>
-                            {openScoring.has(album.id) ? '▲ Rate' : '▼ Rate'}
-                          </button>
-                          <button onClick={() => handleDelete(album.id)}>Remove</button>
-                        </div>
+              {albums.map((album, index) => {
+                const score = computeWeightedScore(album, weights)
+                return (
+                  <Draggable key={album.id} draggableId={album.id} index={index}>
+                    {(provided) => (
+                      <li
+                        ref={provided.innerRef}
+                        {...provided.draggableProps}
+                        {...provided.dragHandleProps}
+                        style={{
+                          ...provided.draggableProps.style,
+                          display: 'flex',
+                          gap: '16px',
+                          alignItems: 'flex-start',
+                          padding: '16px 0',
+                          borderBottom: '1px solid var(--border)',
+                        }}
+                      >
+                        <span style={{ width: '48px', flexShrink: 0, textAlign: 'right', color: 'var(--subtle)', fontSize: '1.8rem', fontWeight: '700', paddingTop: '4px', letterSpacing: '-0.03em', lineHeight: 1 }}>
+                          {getDisplayIndex(index) + 1}
+                        </span>
 
-                        {openScoring.has(album.id) && (
-                          <div style={{ marginTop: '8px', padding: '8px', background: '#1a1a1a', borderRadius: '4px' }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', cursor: 'pointer' }}>
-                              <input
-                                type="checkbox"
-                                checked={!!album.score_relisten}
-                                onChange={() => handleRelistenToggle(album.id)}
-                              />
-                              Relistened
-                            </label>
-                            {SCORE_FIELDS.map(({ key, label }) => (
-                              <div key={key} style={{ marginBottom: '8px' }}>
-                                <label style={{ fontSize: '0.9rem', color: '#ccc' }}>
-                                  {label}: <span style={{ color: '#f0f0f0' }}>{album[key] ?? '--'}</span>
-                                </label>
-                                <input
-                                  type="range"
-                                  min={1} max={10} step={1}
-                                  value={album[key] ?? 5}
-                                  onChange={e => handleScoreChange(album.id, key, e.target.value)}
-                                  onMouseUp={e => handleScoreBlur(album.id, key, e.target.value)}
-                                  style={{ display: 'block', width: '100%' }}
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        <textarea
-                          placeholder="Review"
-                          value={album.review || ''}
-                          onChange={e => handleReviewChange(album.id, e.target.value)}
-                          onBlur={e => handleReviewBlur(album.id, e.target.value)}
-                          rows={2}
-                          style={{ display: 'block', width: '100%', marginTop: '8px', boxSizing: 'border-box' }}
+                        <img
+                          src={album.cover_url || `https://coverartarchive.org/release-group/${album.mbid}/front`}
+                          alt={album.title}
+                          width={150}
+                          height={150}
+                          style={{ objectFit: 'cover', flexShrink: 0, borderRadius: '4px' }}
+                          onError={e => { e.target.style.display = 'none' }}
                         />
-                      </div>
-                    </li>
-                  )}
-                </Draggable>
-              ))}
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: '600', fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {album.title}
+                          </div>
+                          <div style={{ color: 'var(--subtle)', fontSize: '0.85rem', marginBottom: '10px' }}>
+                            {album.artist}
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            {score > 0 && (
+                              <span style={{ fontSize: '0.75rem', color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)', padding: '2px 7px', borderRadius: '20px' }}>
+                                {score.toFixed(1)}
+                              </span>
+                            )}
+                            <button onClick={() => toggleScoring(album.id)}>
+                              {openScoring.has(album.id) ? 'Close' : 'Rate'}
+                            </button>
+                            <button
+                              onClick={() => handleDelete(album.id)}
+                              style={{ color: 'var(--muted)', borderColor: 'transparent', background: 'transparent' }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+
+                          {openScoring.has(album.id) && (
+                            <div style={{ marginTop: '12px', padding: '12px', background: 'var(--surface)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                                <input type="checkbox" checked={!!album.score_relisten} onChange={() => handleRelistenToggle(album.id)} />
+                                Relistened
+                              </label>
+                              {SCORE_FIELDS.map(({ key, label }) => (
+                                <div key={key} style={{ marginBottom: '10px' }}>
+                                  <label style={{ fontSize: '0.8rem', color: 'var(--subtle)', display: 'block', marginBottom: '4px' }}>
+                                    {label} — <span style={{ color: 'var(--text)' }}>{album[key] ?? '--'}</span>
+                                  </label>
+                                  <input
+                                    type="range" min={1} max={10} step={1}
+                                    value={album[key] ?? 5}
+                                    onChange={e => handleScoreChange(album.id, key, e.target.value)}
+                                    onMouseUp={e => handleScoreBlur(album.id, key, e.target.value)}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <textarea
+                            placeholder="Review"
+                            value={album.review || ''}
+                            onChange={e => handleReviewChange(album.id, e.target.value)}
+                            onBlur={e => handleReviewBlur(album.id, e.target.value)}
+                            rows={2}
+                            style={{ display: 'block', width: '100%', marginTop: '10px' }}
+                          />
+                        </div>
+                      </li>
+                    )}
+                  </Draggable>
+                )
+              })}
               {provided.placeholder}
             </ul>
           )}
