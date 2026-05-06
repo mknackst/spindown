@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import Auth from './Auth'
 import AlbumSearch from './AlbumSearch'
+import AlbumList from './AlbumList'
 
 function App() {
   const [session, setSession] = useState(null)
+  const [refreshList, setRefreshList] = useState(0)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -26,7 +28,7 @@ function App() {
       weighted_score: 0
     })
     if (error) console.error(error)
-    else alert(`${album.title} added to your list!`)
+    else setRefreshList(r => r + 1)
   }
 
   return (
@@ -37,6 +39,7 @@ function App() {
           <p>Welcome, {session.user.email}</p>
           <button onClick={() => supabase.auth.signOut()}>Sign out</button>
           <AlbumSearch onAdd={handleAddAlbum} />
+          <AlbumList key={refreshList} userId={session.user.id} />
         </>
       ) : (
         <Auth />
