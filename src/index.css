@@ -9,3 +9,9 @@ body {
   background: #0f0f0f;
   color: #f0f0f0;
 }
+
+#root {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 0 24px;
+}

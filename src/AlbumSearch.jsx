@@ -36,7 +36,7 @@ function AlbumSearch({ onAdd }) {
               title: album.title,
               artist: album['artist-credit']?.[0]?.name || 'Unknown Artist',
               mbid: album.id,
-              cover_url: null
+              cover_url: `https://coverartarchive.org/release-group/${album.id}/front`
             })}>
               + Add
             </button>
