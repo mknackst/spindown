@@ -30,11 +30,26 @@ function sortAndRank(albumList, weights) {
     .map((a, i) => ({ ...a, rank: i + 1 }))
 }
 
+function SliderRow({ value, min, max, onChange, onCommit }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+      <span style={{ color: 'var(--muted)', fontSize: '0.7rem', flexShrink: 0, width: '10px', textAlign: 'right' }}>{min}</span>
+      <input
+        type="range" min={min} max={max} step={1}
+        value={value}
+        onChange={onChange}
+        onMouseUp={onCommit}
+        style={{ flex: 1 }}
+      />
+      <span style={{ color: 'var(--muted)', fontSize: '0.7rem', flexShrink: 0, width: '16px' }}>{max}</span>
+    </div>
+  )
+}
+
 function AlbumList({ userId, year }) {
   const [albums, setAlbums] = useState([])
   const [loading, setLoading] = useState(true)
   const [weights, setWeights] = useState(DEFAULT_WEIGHTS)
-  const [weightsOpen, setWeightsOpen] = useState(false)
   const [openScoring, setOpenScoring] = useState(new Set())
   const [dragFrom, setDragFrom] = useState(null)
   const [dragTo, setDragTo] = useState(null)
@@ -165,37 +180,9 @@ function AlbumList({ userId, year }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-        <h2>My List</h2>
-        <button onClick={() => setWeightsOpen(o => !o)}>
-          ⚙ {weightsOpen ? 'Hide weights' : 'Sort weights'}
-        </button>
+      <div style={{ marginBottom: '16px' }}>
+        <h2>My {year} Year-End List</h2>
       </div>
-
-      {weightsOpen && (
-        <div style={{ marginBottom: '20px', padding: '16px', background: 'var(--surface)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ fontSize: '0.8rem', color: 'var(--subtle)', display: 'block', marginBottom: '4px' }}>
-              Relistened — {weights.score_relisten}
-            </label>
-            <input type="range" min={0} max={10} value={weights.score_relisten}
-              onChange={e => setWeights(w => ({ ...w, score_relisten: Number(e.target.value) }))}
-              onMouseUp={e => handleWeightCommit('score_relisten', e.target.value)}
-            />
-          </div>
-          {SCORE_FIELDS.map(({ key, label }) => (
-            <div key={key} style={{ marginBottom: '12px' }}>
-              <label style={{ fontSize: '0.8rem', color: 'var(--subtle)', display: 'block', marginBottom: '4px' }}>
-                {label} — {weights[key]}
-              </label>
-              <input type="range" min={0} max={10} value={weights[key]}
-                onChange={e => setWeights(w => ({ ...w, [key]: Number(e.target.value) }))}
-                onMouseUp={e => handleWeightCommit(key, e.target.value)}
-              />
-            </div>
-          ))}
-        </div>
-      )}
 
       <DragDropContext onDragEnd={handleDragEnd} onDragUpdate={handleDragUpdate}>
         <Droppable droppableId="album-list">
@@ -203,6 +190,7 @@ function AlbumList({ userId, year }) {
             <ul {...provided.droppableProps} ref={provided.innerRef}>
               {albums.map((album, index) => {
                 const score = computeWeightedScore(album, weights)
+                const isOpen = openScoring.has(album.id)
                 return (
                   <Draggable key={album.id} draggableId={album.id} index={index}>
                     {(provided) => (
@@ -243,11 +231,11 @@ function AlbumList({ userId, year }) {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                             {score > 0 && (
                               <span style={{ fontSize: '0.75rem', color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)', padding: '2px 7px', borderRadius: '20px' }}>
-                                {score.toFixed(1)}
+                                {score.toFixed(1)} / 10
                               </span>
                             )}
                             <button onClick={() => toggleScoring(album.id)}>
-                              {openScoring.has(album.id) ? 'Close' : 'Rate'}
+                              {isOpen ? 'Close' : 'Score'}
                             </button>
                             <button
                               onClick={() => handleDelete(album.id)}
@@ -257,23 +245,48 @@ function AlbumList({ userId, year }) {
                             </button>
                           </div>
 
-                          {openScoring.has(album.id) && (
-                            <div style={{ marginTop: '12px', padding: '12px', background: 'var(--surface)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                          {isOpen && (
+                            <div style={{ marginTop: '12px', padding: '14px', background: 'var(--surface)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', cursor: 'pointer', fontSize: '0.85rem' }}>
                                 <input type="checkbox" checked={!!album.score_relisten} onChange={() => handleRelistenToggle(album.id)} />
                                 Relistened
+                                <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--muted)' }}>weight {weights.score_relisten}/10</span>
                               </label>
+
                               {SCORE_FIELDS.map(({ key, label }) => (
-                                <div key={key} style={{ marginBottom: '10px' }}>
-                                  <label style={{ fontSize: '0.8rem', color: 'var(--subtle)', display: 'block', marginBottom: '4px' }}>
-                                    {label} — <span style={{ color: 'var(--text)' }}>{album[key] ?? '--'}</span>
-                                  </label>
-                                  <input
-                                    type="range" min={1} max={10} step={1}
-                                    value={album[key] ?? 5}
-                                    onChange={e => handleScoreChange(album.id, key, e.target.value)}
-                                    onMouseUp={e => handleScoreBlur(album.id, key, e.target.value)}
-                                  />
+                                <div key={key} style={{ marginBottom: '16px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
+                                    <span style={{ fontSize: '0.82rem', color: 'var(--subtle)' }}>{label}</span>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+                                      score <strong style={{ color: 'var(--text)' }}>{album[key] ?? '—'}</strong>
+                                      <span style={{ margin: '0 6px', opacity: 0.4 }}>·</span>
+                                      weight <strong style={{ color: 'var(--text)' }}>{weights[key]}</strong>/10
+                                    </span>
+                                  </div>
+
+                                  <div style={{ marginBottom: '4px' }}>
+                                    <SliderRow
+                                      value={album[key] ?? 5}
+                                      min={1} max={10}
+                                      onChange={e => handleScoreChange(album.id, key, e.target.value)}
+                                      onCommit={e => handleScoreBlur(album.id, key, e.target.value)}
+                                    />
+                                  </div>
+
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ color: 'var(--muted)', fontSize: '0.68rem', flexShrink: 0, width: '10px', textAlign: 'right' }}>0</span>
+                                    <input
+                                      type="range" min={0} max={10} step={1}
+                                      value={weights[key]}
+                                      onChange={e => setWeights(w => ({ ...w, [key]: Number(e.target.value) }))}
+                                      onMouseUp={e => handleWeightCommit(key, e.target.value)}
+                                      style={{ flex: 1, opacity: 0.55 }}
+                                    />
+                                    <span style={{ color: 'var(--muted)', fontSize: '0.68rem', flexShrink: 0, width: '16px' }}>10</span>
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                    <span style={{ fontSize: '0.65rem', color: 'var(--muted)', letterSpacing: '0.02em', marginRight: '22px' }}>weight</span>
+                                  </div>
                                 </div>
                               ))}
                             </div>
