@@ -45,6 +45,7 @@ function AssignmentsPage({ userId, year, onAdd }) {
     }
 
     async function fetchSpotifyLinks() {
+      const updates = {}
       for (const item of toFetch) {
         if (cancelled) break
         if (item.spotify_url) continue
@@ -55,12 +56,18 @@ function AssignmentsPage({ userId, year, onAdd }) {
           )
           if (!res.ok) continue
           const data = await res.json()
-          const spotifyUrl = data?.spotify_url
-          if (spotifyUrl && !cancelled) {
-            setQueue(prev => prev.map(q => q.id === item.id ? { ...q, spotify_url: spotifyUrl } : q))
-          }
+          if (data?.spotify_url) updates[item.id] = data.spotify_url
         } catch {}
         await new Promise(r => setTimeout(r, 250))
+      }
+      if (!cancelled && Object.keys(updates).length > 0) {
+        setLinks(prev => {
+          const next = { ...prev }
+          for (const [id, url] of Object.entries(updates)) {
+            next[id] = { ...next[id], spotify: url }
+          }
+          return next
+        })
       }
     }
 
@@ -187,7 +194,7 @@ function AssignmentsPage({ userId, year, onAdd }) {
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                   {PLATFORMS.map(p => {
                     const direct = p.id === 'apple' ? links[item.id]?.apple
-                      : p.id === 'spotify' ? item.spotify_url
+                      : p.id === 'spotify' ? (item.spotify_url || links[item.id]?.spotify)
                       : null
                     const href = direct || p.search(item.artist, item.title)
                     return (
