@@ -45,48 +45,56 @@ Deno.serve(async (req) => {
     if (title) {
       const titleLower = title.toLowerCase()
       const artistLower = artist.toLowerCase()
+      const headers = { 'Authorization': `Bearer ${token}` }
 
-      async function searchAlbums(q: string) {
-        const res = await fetch(
-          `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=album&limit=10&market=US`,
-          { headers: { 'Authorization': `Bearer ${token}` } }
+      // Step 1: find the artist ID by name
+      const artistRes = await fetch(
+        `https://api.spotify.com/v1/search?q=${encodeURIComponent(artist)}&type=artist&limit=5&market=US`,
+        { headers }
+      )
+      if (!artistRes.ok) throw new Error(`Artist search failed: ${artistRes.status}`)
+      const artistData = await artistRes.json()
+      const artistItems: any[] = artistData.artists?.items ?? []
+      const artistMatch = artistItems.find((a: any) => a.name.toLowerCase() === artistLower)
+        ?? artistItems[0]
+
+      if (artistMatch) {
+        // Step 2: get all studio albums for this artist and match by title
+        const albumsRes = await fetch(
+          `https://api.spotify.com/v1/artists/${artistMatch.id}/albums?include_groups=album&limit=50&market=US`,
+          { headers }
         )
-        if (!res.ok) return []
-        const data = await res.json()
-        return data.albums?.items ?? []
+        if (albumsRes.ok) {
+          const albumsData = await albumsRes.json()
+          const albums: any[] = albumsData.items ?? []
+          const albumMatch = albums.find((a: any) => a.name.toLowerCase() === titleLower)
+            ?? albums.find((a: any) => a.name.toLowerCase().includes(titleLower))
+          if (albumMatch) {
+            return new Response(JSON.stringify({ spotify_url: albumMatch.external_urls?.spotify ?? null }), {
+              headers: { ...CORS, 'Content-Type': 'application/json' },
+            })
+          }
+        }
       }
 
-      function bestMatch(items: any[]) {
-        // Exact artist + title
-        return items.find((a: any) =>
+      // Fallback: plain search query
+      const fallbackRes = await fetch(
+        `https://api.spotify.com/v1/search?q=${encodeURIComponent(`${artist} ${title}`)}&type=album&limit=10&market=US`,
+        { headers }
+      )
+      if (fallbackRes.ok) {
+        const fallbackData = await fallbackRes.json()
+        const fallbackItems: any[] = fallbackData.albums?.items ?? []
+        const fallbackMatch = fallbackItems.find((a: any) =>
           a.artists?.some((ar: any) => ar.name.toLowerCase() === artistLower) &&
           a.name.toLowerCase() === titleLower
-        ) ?? items.find((a: any) =>
-          a.artists?.some((ar: any) => ar.name.toLowerCase() === artistLower) &&
-          a.name.toLowerCase().includes(titleLower)
-        ) ?? items.find((a: any) =>
-          a.artists?.some((ar: any) => ar.name.toLowerCase() === artistLower)
         ) ?? null
+        return new Response(JSON.stringify({ spotify_url: fallbackMatch?.external_urls?.spotify ?? null }), {
+          headers: { ...CORS, 'Content-Type': 'application/json' },
+        })
       }
 
-      // Strategy 1: artist name + quoted title (most targeted)
-      let items = await searchAlbums(`${artist} "${title}"`)
-      let match = bestMatch(items)
-
-      // Strategy 2: strict field filters
-      if (!match) {
-        items = await searchAlbums(`artist:"${artist}" album:"${title}"`)
-        match = bestMatch(items)
-      }
-
-      // Strategy 3: plain artist + title
-      if (!match) {
-        items = await searchAlbums(`${artist} ${title}`)
-        match = bestMatch(items)
-      }
-
-      const spotify_url = match?.external_urls?.spotify ?? null
-      return new Response(JSON.stringify({ spotify_url }), {
+      return new Response(JSON.stringify({ spotify_url: null }), {
         headers: { ...CORS, 'Content-Type': 'application/json' },
       })
     }
