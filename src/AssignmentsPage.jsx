@@ -56,7 +56,9 @@ function AssignmentsPage({ userId, year, onAdd }) {
           if (!res.ok) continue
           const data = await res.json()
           const spotifyUrl = data?.spotify_url
-          if (spotifyUrl && !cancelled) setLinks(prev => ({ ...prev, [item.id]: { ...prev[item.id], spotify: spotifyUrl } }))
+          if (spotifyUrl && !cancelled) {
+            setQueue(prev => prev.map(q => q.id === item.id ? { ...q, spotify_url: spotifyUrl } : q))
+          }
         } catch {}
         await new Promise(r => setTimeout(r, 250))
       }
@@ -185,7 +187,7 @@ function AssignmentsPage({ userId, year, onAdd }) {
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                   {PLATFORMS.map(p => {
                     const direct = p.id === 'apple' ? links[item.id]?.apple
-                      : p.id === 'spotify' ? (item.spotify_url || links[item.id]?.spotify)
+                      : p.id === 'spotify' ? item.spotify_url
                       : null
                     const href = direct || p.search(item.artist, item.title)
                     return (
