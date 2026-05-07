@@ -106,7 +106,7 @@ function YearWheel({ existingYears, onSelect, onCancel }) {
   )
 }
 
-function Dashboard({ userId, onOpenList }) {
+function Dashboard({ userId, onOpenList, onOpenAssignments }) {
   const [lists, setLists] = useState([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -116,19 +116,22 @@ function Dashboard({ userId, onOpenList }) {
   }, [])
 
   async function fetchLists() {
-    const { data, error } = await supabase
-      .from('albums')
-      .select('year, cover_url, rank')
-      .eq('user_id', userId)
-      .order('rank', { ascending: true })
+    const [albumsRes, queueRes] = await Promise.all([
+      supabase.from('albums').select('year, cover_url, rank').eq('user_id', userId).order('rank', { ascending: true }),
+      supabase.from('listening_queue').select('year').eq('user_id', userId).eq('status', 'pending'),
+    ])
 
-    if (error) { console.error(error); setLoading(false); return }
+    if (albumsRes.error) { console.error(albumsRes.error); setLoading(false); return }
 
     const yearMap = {}
-    for (const { year, cover_url } of data || []) {
-      if (!yearMap[year]) yearMap[year] = { year, count: 0, covers: [] }
+    for (const { year, cover_url } of albumsRes.data || []) {
+      if (!yearMap[year]) yearMap[year] = { year, count: 0, covers: [], assignments: 0 }
       yearMap[year].count++
       if (yearMap[year].covers.length < 4 && cover_url) yearMap[year].covers.push(cover_url)
+    }
+
+    for (const { year } of queueRes.data || []) {
+      if (yearMap[year]) yearMap[year].assignments++
     }
 
     setLists(Object.values(yearMap).sort((a, b) => b.year - a.year))
@@ -168,10 +171,7 @@ function Dashboard({ userId, onOpenList }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h2>My Lists</h2>
-        {!creating && <button onClick={() => setCreating(true)}>+ New list</button>}
-      </div>
+      <h2 style={{ marginBottom: '24px' }}>My Lists</h2>
 
       {creating && (
         <div style={{ marginBottom: '32px' }}>
@@ -180,15 +180,47 @@ function Dashboard({ userId, onOpenList }) {
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px' }}>
-        {lists.map(({ year, count, covers }) => (
-          <button
+        {!creating && (
+          <div
+            onClick={() => setCreating(true)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => e.key === 'Enter' && setCreating(true)}
+            style={{
+              border: '2px dashed #7c6fcd',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '10px',
+              aspectRatio: '1 / 1.28',
+              color: '#7c6fcd',
+              background: 'rgba(124,111,205,0.06)',
+              transition: 'border-color 0.15s, color 0.15s, background 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = '#9d93d8'; e.currentTarget.style.color = '#9d93d8'; e.currentTarget.style.background = 'rgba(124,111,205,0.12)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = '#7c6fcd'; e.currentTarget.style.color = '#7c6fcd'; e.currentTarget.style.background = 'rgba(124,111,205,0.06)' }}
+          >
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <span style={{ fontSize: '0.85rem', fontWeight: '500' }}>New list</span>
+          </div>
+        )}
+
+        {lists.map(({ year, count, covers, assignments }) => (
+          <div
             key={year}
             onClick={() => onOpenList(year)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => e.key === 'Enter' && onOpenList(year)}
             style={{
               background: 'var(--surface)',
               border: '1px solid var(--border)',
               borderRadius: '8px',
-              padding: 0,
               cursor: 'pointer',
               textAlign: 'left',
               overflow: 'hidden',
@@ -207,11 +239,31 @@ function Dashboard({ userId, onOpenList }) {
             </div>
             <div style={{ padding: '14px' }}>
               <div style={{ fontSize: '1.6rem', fontWeight: '700', letterSpacing: '-0.02em' }}>{year}</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--muted)', marginTop: '2px' }}>
-                {count} album{count !== 1 ? 's' : ''}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px' }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
+                  {count} album{count !== 1 ? 's' : ''}
+                </div>
+                {assignments > 0 && (
+                  <button
+                    onClick={e => { e.stopPropagation(); onOpenAssignments(year) }}
+                    style={{
+                      fontSize: '0.7rem',
+                      fontWeight: '600',
+                      padding: '2px 8px',
+                      borderRadius: '20px',
+                      background: 'var(--accent, #7c6fcd)',
+                      color: '#fff',
+                      border: 'none',
+                      cursor: 'pointer',
+                      lineHeight: '1.6',
+                    }}
+                  >
+                    {assignments} pending
+                  </button>
+                )}
               </div>
             </div>
-          </button>
+          </div>
         ))}
       </div>
     </div>

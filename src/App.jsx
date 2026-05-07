@@ -5,6 +5,7 @@ import Dashboard from './Dashboard'
 import AlbumSearch from './AlbumSearch'
 import AlbumList from './AlbumList'
 import ListeningQueue from './ListeningQueue'
+import AssignmentsPage from './AssignmentsPage'
 import ExportPage from './ExportPage'
 import { generateRecommendations } from './recommendations'
 
@@ -48,7 +49,8 @@ function App() {
       cover_url: album.cover_url,
       year: selectedYear,
       rank: (count ?? 0) + 1,
-      weighted_score: 0
+      weighted_score: album.weighted_score || 0,
+      review: album.review || null,
     })
     if (error) { console.error(error); return }
     setRefreshList(r => r + 1)
@@ -65,7 +67,7 @@ function App() {
           >
             Spindown
           </h1>
-          {(view === 'list' || view === 'export') && session && (
+          {(view === 'list' || view === 'export' || view === 'assignments') && session && (
             <>
               <span style={{ color: 'var(--border-hover)' }}>/</span>
               <span style={{ color: 'var(--subtle)', fontSize: '0.95rem' }}>{selectedYear}</span>
@@ -75,6 +77,11 @@ function App() {
                 </button>
               )}
               {view === 'export' && (
+                <button onClick={() => setView('list')} style={{ fontSize: '0.75rem', color: 'var(--muted)', borderColor: 'transparent', background: 'transparent' }}>
+                  ← Back to list
+                </button>
+              )}
+              {view === 'assignments' && (
                 <button onClick={() => setView('list')} style={{ fontSize: '0.75rem', color: 'var(--muted)', borderColor: 'transparent', background: 'transparent' }}>
                   ← Back to list
                 </button>
@@ -96,8 +103,12 @@ function App() {
         <ExportPage userId={session.user.id} year={selectedYear} section={exportSection} />
       )}
 
+      {session && view === 'assignments' && (
+        <AssignmentsPage userId={session.user.id} year={selectedYear} onAdd={handleAddAlbum} />
+      )}
+
       {session && view === 'dashboard' && (
-        <Dashboard userId={session.user.id} onOpenList={openList} />
+        <Dashboard userId={session.user.id} onOpenList={openList} onOpenAssignments={year => { setSelectedYear(year); setView('assignments') }} />
       )}
 
       {session && view === 'list' && (
@@ -109,7 +120,7 @@ function App() {
             </div>
             <div style={{ flex: '0 0 300px', position: 'sticky', top: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ maxHeight: '65vh', overflowY: 'auto' }}>
-                <ListeningQueue userId={session.user.id} onAdd={handleAddAlbum} refreshTrigger={queueRefresh} year={selectedYear} />
+                <ListeningQueue userId={session.user.id} onAdd={handleAddAlbum} refreshTrigger={queueRefresh} year={selectedYear} onViewAll={() => setView('assignments')} />
               </div>
               <h2 style={{ marginBottom: '16px' }}>Share Your List</h2>
               <button
