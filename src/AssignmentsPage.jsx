@@ -50,15 +50,12 @@ function AssignmentsPage({ userId, year, onAdd }) {
         if (item.spotify_url) continue
         try {
           const res = await fetch(
-            `${SUPABASE_URL}/functions/v1/spotify-search?artist=${encodeURIComponent(item.artist)}&year=${year}`,
+            `${SUPABASE_URL}/functions/v1/spotify-search?artist=${encodeURIComponent(item.artist)}&title=${encodeURIComponent(item.title)}`,
             { headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY } }
           )
           if (!res.ok) continue
-          const results = await res.json()
-          const match = Array.isArray(results) && results.find(r =>
-            r.title.toLowerCase() === item.title.toLowerCase()
-          )
-          const url = match?.spotify_url
+          const data = await res.json()
+          const url = data?.spotify_url
           if (url && !cancelled) setLinks(prev => ({ ...prev, [item.id]: { ...prev[item.id], spotify: url } }))
         } catch {}
         await new Promise(r => setTimeout(r, 250))

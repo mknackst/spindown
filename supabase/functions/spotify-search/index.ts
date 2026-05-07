@@ -34,16 +34,36 @@ Deno.serve(async (req) => {
   const params = new URL(req.url).searchParams
   const artist = params.get('artist')
   const year = params.get('year')
-  if (!artist || !year) return new Response('Missing artist or year', { status: 400, headers: CORS })
+  const title = params.get('title')
+
+  if (!artist) return new Response('Missing artist', { status: 400, headers: CORS })
+  if (!year && !title) return new Response('Missing year or title', { status: 400, headers: CORS })
 
   try {
     const token = await getToken()
+
+    if (title) {
+      // Direct album lookup by artist + title — returns a single spotify_url or null
+      const q = encodeURIComponent(`album:"${title}" artist:"${artist}"`)
+      const res = await fetch(
+        `https://api.spotify.com/v1/search?q=${q}&type=album&limit=1&market=US`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      )
+      if (!res.ok) throw new Error(`Spotify search failed: ${res.status}`)
+      const data = await res.json()
+      const item = data.albums?.items?.[0]
+      const spotify_url = item?.external_urls?.spotify ?? null
+      return new Response(JSON.stringify({ spotify_url }), {
+        headers: { ...CORS, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Year-based search — returns array of albums for recommendations
     const q = encodeURIComponent(`artist:"${artist}" year:${year}`)
     const res = await fetch(
       `https://api.spotify.com/v1/search?q=${q}&type=album&limit=10&market=US`,
       { headers: { 'Authorization': `Bearer ${token}` } }
     )
-
     if (!res.ok) throw new Error(`Spotify search failed: ${res.status}`)
     const data = await res.json()
 
