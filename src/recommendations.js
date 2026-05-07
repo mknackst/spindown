@@ -2,6 +2,8 @@ import { supabase } from './supabase'
 
 const LASTFM = 'https://ws.audioscrobbler.com/2.0'
 const LASTFM_KEY = import.meta.env.VITE_LASTFM_API_KEY
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 const QUEUE_TARGET = 10
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
@@ -12,15 +14,25 @@ async function lfm(method, params) {
   return res.json()
 }
 
-async function mbAlbumsForYear(artist, year) {
-  await sleep(1100)
-  const res = await fetch(
-    `https://musicbrainz.org/ws/2/release-group?query=artist:${encodeURIComponent(`"${artist}"`)}&type=album&fmt=json&limit=10`
-  )
-  const data = await res.json()
-  return (data['release-groups'] || []).filter(rg =>
-    (rg['first-release-date'] || '').startsWith(String(year))
-  )
+async function spotifyAlbumsForYear(artist, year) {
+  try {
+    const url = `${SUPABASE_URL}/functions/v1/spotify-search?artist=${encodeURIComponent(artist)}&year=${year}`
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY },
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    if (!Array.isArray(data)) return []
+    return data.map(a => ({
+      id: null,
+      title: a.title,
+      'artist-credit': [{ name: a.artist }],
+      cover_url: a.cover_url,
+      spotify_url: a.spotify_url,
+    }))
+  } catch {
+    return []
+  }
 }
 
 async function itunesAlbumsForYear(artist, year) {
@@ -97,8 +109,9 @@ export async function generateRecommendations(userId, year) {
   for (const artist of [...similarArtists].slice(0, 20)) {
     if (recommendations.length >= needed) break
 
-    let results = await mbAlbumsForYear(artist, year)
+    let results = await spotifyAlbumsForYear(artist, year)
     if (results.length === 0) results = await itunesAlbumsForYear(artist, year)
+    await sleep(200)
 
     for (const rg of results) {
       const title = rg.title
@@ -107,10 +120,11 @@ export async function generateRecommendations(userId, year) {
       if (skip.has(key)) continue
       recommendations.push({
         user_id: userId, year,
-        mbid: rg.id || null,
+        mbid: null,
         title,
         artist: artistName,
-        cover_url: rg.cover_url || (rg.id ? `https://coverartarchive.org/release-group/${rg.id}/front` : null),
+        cover_url: rg.cover_url || null,
+        spotify_url: rg.spotify_url || null,
         status: 'pending',
         reason: artist,
       })

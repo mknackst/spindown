@@ -162,7 +162,8 @@ function AssignmentsPage({ userId, year, onAdd }) {
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                   {PLATFORMS.map(p => {
-                    const href = (p.id === 'apple' ? links[item.id]?.apple : null) || p.search(item.artist, item.title)
+                    const direct = p.id === 'apple' ? links[item.id]?.apple : p.id === 'spotify' ? item.spotify_url : null
+                    const href = direct || p.search(item.artist, item.title)
                     return (
                       <a
                         key={p.id}
