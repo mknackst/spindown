@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import { checkPitchforkUrl } from './pitchfork'
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+
 const PLATFORMS = [
   { id: 'spotify',  name: 'Spotify',     color: '#1DB954', search: (a, t) => `https://open.spotify.com/search/${encodeURIComponent(a + ' ' + t)}` },
   { id: 'apple',    name: 'Apple Music', color: '#FC3C44', search: (a, t) => `https://music.apple.com/search?term=${encodeURIComponent(a + ' ' + t)}` },
@@ -41,6 +44,27 @@ function AssignmentsPage({ userId, year, onAdd }) {
       }
     }
 
+    async function fetchSpotifyLinks() {
+      for (const item of toFetch) {
+        if (cancelled) break
+        if (item.spotify_url) continue
+        try {
+          const res = await fetch(
+            `${SUPABASE_URL}/functions/v1/spotify-search?artist=${encodeURIComponent(item.artist)}&year=${year}`,
+            { headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY } }
+          )
+          if (!res.ok) continue
+          const results = await res.json()
+          const match = Array.isArray(results) && results.find(r =>
+            r.title.toLowerCase() === item.title.toLowerCase()
+          )
+          const url = match?.spotify_url
+          if (url && !cancelled) setLinks(prev => ({ ...prev, [item.id]: { ...prev[item.id], spotify: url } }))
+        } catch {}
+        await new Promise(r => setTimeout(r, 250))
+      }
+    }
+
     async function fetchPitchforkLinks() {
       for (const item of toFetch) {
         if (cancelled) break
@@ -51,6 +75,7 @@ function AssignmentsPage({ userId, year, onAdd }) {
     }
 
     fetchAppleLinks()
+    fetchSpotifyLinks()
     fetchPitchforkLinks()
     return () => { cancelled = true }
   }, [queue])
@@ -162,7 +187,9 @@ function AssignmentsPage({ userId, year, onAdd }) {
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                   {PLATFORMS.map(p => {
-                    const direct = p.id === 'apple' ? links[item.id]?.apple : p.id === 'spotify' ? item.spotify_url : null
+                    const direct = p.id === 'apple' ? links[item.id]?.apple
+                      : p.id === 'spotify' ? (item.spotify_url || links[item.id]?.spotify)
+                      : null
                     const href = direct || p.search(item.artist, item.title)
                     return (
                       <a
