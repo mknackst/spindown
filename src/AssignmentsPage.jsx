@@ -47,25 +47,17 @@ function AssignmentsPage({ userId, year, onAdd }) {
     async function fetchSpotifyLinks() {
       for (const item of toFetch) {
         if (cancelled) break
-        if (item.spotify_url) {
-          console.log('[spotify] already stored for', item.title, item.spotify_url)
-          continue
-        }
+        if (item.spotify_url) continue
         try {
-          const url = `${SUPABASE_URL}/functions/v1/spotify-search?artist=${encodeURIComponent(item.artist)}&title=${encodeURIComponent(item.title)}`
-          console.log('[spotify] fetching', url)
-          const res = await fetch(url, {
-            headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY },
-          })
-          console.log('[spotify] status', res.status, 'for', item.title)
-          if (!res.ok) { console.error('[spotify] error body', await res.text()); continue }
+          const res = await fetch(
+            `${SUPABASE_URL}/functions/v1/spotify-search?artist=${encodeURIComponent(item.artist)}&title=${encodeURIComponent(item.title)}`,
+            { headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY } }
+          )
+          if (!res.ok) continue
           const data = await res.json()
-          console.log('[spotify] result', data)
           const spotifyUrl = data?.spotify_url
           if (spotifyUrl && !cancelled) setLinks(prev => ({ ...prev, [item.id]: { ...prev[item.id], spotify: spotifyUrl } }))
-        } catch (e) {
-          console.error('[spotify] exception for', item.title, e)
-        }
+        } catch {}
         await new Promise(r => setTimeout(r, 250))
       }
     }
