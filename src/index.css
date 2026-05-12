@@ -98,6 +98,10 @@ textarea {
   resize: vertical;
 }
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 select {
   cursor: pointer;
 }

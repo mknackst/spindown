@@ -98,6 +98,8 @@ function YearWheel({ existingYears, onSelect, onCancel }) {
         <button
           onClick={onCancel}
           style={{ color: 'var(--muted)', borderColor: 'transparent', background: 'transparent' }}
+          onMouseEnter={e => { e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.background = 'var(--surface-raised)' }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'transparent' }}
         >
           Cancel
         </button>

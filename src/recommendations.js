@@ -4,7 +4,7 @@ const LASTFM = 'https://ws.audioscrobbler.com/2.0'
 const LASTFM_KEY = import.meta.env.VITE_LASTFM_API_KEY
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
-const QUEUE_TARGET = 10
+const QUEUE_TARGET = 25
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 async function lfm(method, params) {
@@ -93,30 +93,30 @@ export async function generateRecommendations(userId, year) {
   ])
 
   const existingArtists = new Set(albums.map(a => a.artist.toLowerCase()))
-  const artists = [...new Set(albums.map(a => a.artist))].slice(0, 5)
+  const artists = [...new Set(albums.map(a => a.artist))]
 
   const similarArtists = new Set()
   for (const artist of artists) {
-    const data = await lfm('artist.getSimilar', { artist, limit: 5 })
+    const data = await lfm('artist.getSimilar', { artist, limit: 20 })
     if (data.error) { console.error('[recs] Last.fm getSimilar error', data.message); continue }
     for (const s of data.similarartists?.artist || []) {
       if (!existingArtists.has(s.name.toLowerCase())) similarArtists.add(s.name)
     }
   }
 
-  console.log('[recs] similar artists found:', [...similarArtists])
-
   const needed = QUEUE_TARGET - count
   const recommendations = []
 
-  for (const artist of [...similarArtists].slice(0, 20)) {
+  for (const artist of [...similarArtists]) {
     if (recommendations.length >= needed) break
 
     let results = await spotifyAlbumsForYear(artist, year)
     if (results.length === 0) results = await itunesAlbumsForYear(artist, year)
     await sleep(200)
 
+    let taken = 0
     for (const rg of results) {
+      if (taken >= 2 || recommendations.length >= needed) break
       const title = rg.title
       const artistName = rg['artist-credit']?.[0]?.name || artist
       const key = `${artistName}|||${title}`.toLowerCase()
@@ -132,7 +132,7 @@ export async function generateRecommendations(userId, year) {
         reason: artist,
       })
       skip.add(key)
-      break
+      taken++
     }
   }
 

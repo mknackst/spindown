@@ -1,24 +1,99 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import { checkPitchforkUrl } from './pitchfork'
+import { generateRecommendations } from './recommendations'
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+const REFILL_BELOW = 5
 
 const PLATFORMS = [
   { id: 'spotify',  name: 'Spotify',     color: '#1DB954', search: (a, t) => `https://open.spotify.com/search/${encodeURIComponent(a + ' ' + t)}` },
   { id: 'apple',    name: 'Apple Music', color: '#FC3C44', search: (a, t) => `https://music.apple.com/search?term=${encodeURIComponent(a + ' ' + t)}` },
   { id: 'bandcamp', name: 'Bandcamp',    color: '#1DA0C3', search: (a, t) => `https://bandcamp.com/search?q=${encodeURIComponent(a + ' ' + t)}` },
-  { id: 'qobuz',    name: 'Qobuz',       color: '#002DAA', search: (a, t) => `https://www.qobuz.com/search?q=${encodeURIComponent(a + ' ' + t)}` },
+  { id: 'qobuz',    name: 'Qobuz',       color: '#002DAA', search: (a, t) => `https://www.qobuz.com/us-en/search?q=${encodeURIComponent(a + ' ' + t)}` },
 ]
 
 function AssignmentsPage({ userId, year, onAdd }) {
   const [queue, setQueue] = useState([])
   const [loading, setLoading] = useState(true)
+  const [refilling, setRefilling] = useState(false)
   const [links, setLinks] = useState({})
   const [reviews, setReviews] = useState({})
   const [scores, setScores] = useState({})
   const [completing, setCompleting] = useState(null)
   const loadedYearRef = useRef(null)
+  const refillingRef = useRef(false)
+
+  async function fetchLinksForItems(items) {
+    // Spotify
+    const spotifyUpdates = {}
+    for (const item of items) {
+      if (item.spotify_url) continue
+      try {
+        const res = await fetch(
+          `${SUPABASE_URL}/functions/v1/spotify-search?artist=${encodeURIComponent(item.artist)}&title=${encodeURIComponent(item.title)}`,
+          { headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY } }
+        )
+        if (res.ok) {
+          const d = await res.json()
+          if (d?.spotify_url) {
+            spotifyUpdates[item.id] = d.spotify_url
+            supabase.from('listening_queue').update({ spotify_url: d.spotify_url }).eq('id', item.id)
+          }
+        }
+      } catch {}
+      await new Promise(r => setTimeout(r, 250))
+    }
+    if (Object.keys(spotifyUpdates).length > 0) {
+      setLinks(prev => {
+        const next = { ...prev }
+        for (const [id, url] of Object.entries(spotifyUpdates)) next[id] = { ...next[id], spotify: url }
+        return next
+      })
+    }
+    // Apple Music
+    for (const item of items) {
+      try {
+        const q = encodeURIComponent(`${item.artist} ${item.title}`)
+        const res = await fetch(`https://itunes.apple.com/search?term=${q}&entity=album&limit=1`)
+        const d = await res.json()
+        const url = d.results?.[0]?.collectionViewUrl
+        if (url) setLinks(prev => ({ ...prev, [item.id]: { ...prev[item.id], apple: url } }))
+      } catch {}
+      await new Promise(r => setTimeout(r, 200))
+    }
+    // Pitchfork
+    for (const item of items) {
+      const url = await checkPitchforkUrl(item.artist, item.title)
+      if (url) setLinks(prev => ({ ...prev, [item.id]: { ...prev[item.id], pitchfork: url } }))
+      await new Promise(r => setTimeout(r, 300))
+    }
+  }
+
+  async function maybeRefill(currentQueue) {
+    if (refillingRef.current) return
+    refillingRef.current = true
+    setRefilling(true)
+    try {
+      await generateRecommendations(userId, year)
+      const { data } = await supabase
+        .from('listening_queue')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'pending')
+        .eq('year', year)
+        .order('created_at', { ascending: true })
+      const existingIds = new Set(currentQueue.map(i => i.id))
+      const fresh = (data || []).filter(i => !existingIds.has(i.id))
+      if (fresh.length > 0) {
+        setQueue(q => [...q, ...fresh])
+        fetchLinksForItems(fresh)
+      }
+    } finally {
+      refillingRef.current = false
+      setRefilling(false)
+    }
+  }
 
   useEffect(() => {
     if (loadedYearRef.current === year) return
@@ -36,52 +111,8 @@ function AssignmentsPage({ userId, year, onAdd }) {
       const items = data || []
       setQueue(items)
       setLoading(false)
-
-      // Spotify: fetch direct URLs for items missing them
-      const spotifyUpdates = {}
-      for (const item of items) {
-        if (item.spotify_url) continue
-        try {
-          const res = await fetch(
-            `${SUPABASE_URL}/functions/v1/spotify-search?artist=${encodeURIComponent(item.artist)}&title=${encodeURIComponent(item.title)}`,
-            { headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY } }
-          )
-          if (res.ok) {
-            const d = await res.json()
-            if (d?.spotify_url) {
-              spotifyUpdates[item.id] = d.spotify_url
-              supabase.from('listening_queue').update({ spotify_url: d.spotify_url }).eq('id', item.id)
-            }
-          }
-        } catch {}
-        await new Promise(r => setTimeout(r, 250))
-      }
-      if (Object.keys(spotifyUpdates).length > 0) {
-        setLinks(prev => {
-          const next = { ...prev }
-          for (const [id, url] of Object.entries(spotifyUpdates)) next[id] = { ...next[id], spotify: url }
-          return next
-        })
-      }
-
-      // Apple Music: fetch direct URLs
-      for (const item of items) {
-        try {
-          const q = encodeURIComponent(`${item.artist} ${item.title}`)
-          const res = await fetch(`https://itunes.apple.com/search?term=${q}&entity=album&limit=1`)
-          const d = await res.json()
-          const url = d.results?.[0]?.collectionViewUrl
-          if (url) setLinks(prev => ({ ...prev, [item.id]: { ...prev[item.id], apple: url } }))
-        } catch {}
-        await new Promise(r => setTimeout(r, 200))
-      }
-
-      // Pitchfork: check for review pages
-      for (const item of items) {
-        const url = await checkPitchforkUrl(item.artist, item.title)
-        if (url) setLinks(prev => ({ ...prev, [item.id]: { ...prev[item.id], pitchfork: url } }))
-        await new Promise(r => setTimeout(r, 300))
-      }
+      fetchLinksForItems(items)
+      maybeRefill(items)
     }
 
     run()
@@ -101,13 +132,21 @@ function AssignmentsPage({ userId, year, onAdd }) {
     await supabase.from('listening_queue').update({ status: 'accepted' }).eq('id', item.id)
     setTimeout(() => {
       setCompleting(null)
-      setQueue(q => q.filter(i => i.id !== item.id))
+      setQueue(q => {
+        const remaining = q.filter(i => i.id !== item.id)
+        if (remaining.length < REFILL_BELOW) setTimeout(() => maybeRefill(remaining), 0)
+        return remaining
+      })
     }, 400)
   }
 
   async function handleSkip(id) {
     await supabase.from('listening_queue').update({ status: 'declined' }).eq('id', id)
-    setQueue(q => q.filter(i => i.id !== id))
+    setQueue(q => {
+      const remaining = q.filter(i => i.id !== id)
+      if (remaining.length < REFILL_BELOW) setTimeout(() => maybeRefill(remaining), 0)
+      return remaining
+    })
   }
 
   if (loading) return <p style={{ color: 'var(--muted)' }}>Loading…</p>
@@ -124,9 +163,9 @@ function AssignmentsPage({ userId, year, onAdd }) {
         Give each album a proper listen, then add it to your {year} list with a score and review.
       </p>
 
-      {queue.length === 0 && (
+      {queue.length === 0 && !refilling && (
         <p style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>
-          No assignments right now — add more albums to your list to receive new ones.
+          No recommendations right now — add more albums to your list to receive new ones.
         </p>
       )}
 
@@ -163,7 +202,10 @@ function AssignmentsPage({ userId, year, onAdd }) {
               </div>
 
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: '700', fontSize: '1.1rem', marginBottom: '2px' }}>{item.title}</div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '2px' }}>
+                  <div style={{ fontWeight: '700', fontSize: '1.1rem' }}>{item.title}</div>
+                  <div style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--muted)', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '2px 8px', flexShrink: 0, marginTop: '3px' }}>{item.year}</div>
+                </div>
                 <div style={{ color: 'var(--muted)', fontSize: '0.9rem', marginBottom: '12px' }}>{item.artist}</div>
 
                 {item.reason && (
@@ -234,6 +276,9 @@ function AssignmentsPage({ userId, year, onAdd }) {
                       <button
                         key={n}
                         onClick={() => setScores(s => ({ ...s, [item.id]: active ? 0 : n }))}
+                        data-active={active ? 'true' : ''}
+                        onMouseEnter={e => { if (!e.currentTarget.dataset.active) { e.currentTarget.style.borderColor = 'var(--border-hover)'; e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.background = 'var(--surface-raised)' } }}
+                        onMouseLeave={e => { if (!e.currentTarget.dataset.active) { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'var(--surface)' } }}
                         style={{
                           width: '34px', height: '34px', padding: 0,
                           fontSize: '0.875rem',
@@ -285,6 +330,8 @@ function AssignmentsPage({ userId, year, onAdd }) {
                 <button
                   onClick={() => handleSkip(item.id)}
                   style={{ padding: '9px 16px', fontSize: '0.9rem', color: 'var(--muted)', borderColor: 'transparent', background: 'transparent' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.background = 'var(--surface-raised)' }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'transparent' }}
                 >
                   Skip
                 </button>
@@ -292,6 +339,15 @@ function AssignmentsPage({ userId, year, onAdd }) {
             </div>
           </div>
         ))}
+
+        {refilling && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '20px 0', color: 'var(--muted)', fontSize: '0.85rem' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }}>
+              <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+            </svg>
+            Finding more recommendations…
+          </div>
+        )}
       </div>
     </div>
   )

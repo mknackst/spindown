@@ -51,7 +51,7 @@ function ListeningQueue({ userId, onAdd, refreshTrigger, year, onViewAll }) {
     setQueue(q => q.filter(i => i.id !== id))
   }
 
-  const preview = queue.slice(0, 3)
+  const preview = queue.filter(item => !/\bsingle\b/i.test(item.title)).slice(0, 3)
 
   return (
     <div>
@@ -94,8 +94,13 @@ function ListeningQueue({ userId, onAdd, refreshTrigger, year, onViewAll }) {
           >
             <CoverImage src={item.cover_url} alt={item.title} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: '600', fontSize: '0.82rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {item.title}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '1px' }}>
+                <div style={{ fontWeight: '600', fontSize: '0.82rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, minWidth: 0 }}>
+                  {item.title}
+                </div>
+                <div style={{ fontSize: '0.65rem', fontWeight: '600', color: 'var(--muted)', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '4px', padding: '1px 5px', flexShrink: 0 }}>
+                  {item.year}
+                </div>
               </div>
               <div style={{ color: 'var(--muted)', fontSize: '0.75rem', marginBottom: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {item.artist}
@@ -110,6 +115,8 @@ function ListeningQueue({ userId, onAdd, refreshTrigger, year, onViewAll }) {
                 <button
                   onClick={() => handleSkip(item.id)}
                   style={{ fontSize: '0.72rem', padding: '3px 8px', color: 'var(--muted)', borderColor: 'transparent', background: 'transparent' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.background = 'var(--surface-raised)' }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'transparent' }}
                 >
                   Skip
                 </button>

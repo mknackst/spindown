@@ -4,7 +4,10 @@ function AlbumSearch({ onAdd, year }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
-  const [filterByYear, setFilterByYear] = useState(false)
+  const [searchedQuery, setSearchedQuery] = useState('')
+  const [filterByYear, setFilterByYear] = useState(true)
+  const [added, setAdded] = useState(new Set())
+  const [fading, setFading] = useState(new Set())
   const containerRef = useRef(null)
 
   useEffect(() => {
@@ -17,10 +20,25 @@ function AlbumSearch({ onAdd, year }) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  function handleAdd(album) {
+    setAdded(prev => new Set(prev).add(album.id))
+    onAdd({
+      title: album.title,
+      artist: album['artist-credit']?.[0]?.name || 'Unknown Artist',
+      mbid: album.id,
+      cover_url: `https://coverartarchive.org/release-group/${album.id}/front`,
+    })
+    setTimeout(() => {
+      setFading(prev => new Set(prev).add(album.id))
+      setTimeout(() => setResults(prev => prev.filter(r => r.id !== album.id)), 300)
+    }, 800)
+  }
+
   async function handleSearch() {
     if (!query.trim()) return
     setLoading(true)
-    const q = (year && filterByYear) ? `${query} AND firstreleasdate:${year}` : query
+    setSearchedQuery(query)
+    const q = (year && filterByYear) ? `${query} AND firstreleasedate:${year}` : query
     const res = await fetch(
       `https://musicbrainz.org/ws/2/release-group?query=${encodeURIComponent(q)}&type=album&fmt=json&limit=10`
     )
@@ -42,14 +60,33 @@ function AlbumSearch({ onAdd, year }) {
         />
         <button onClick={handleSearch} style={{ flexShrink: 0, fontSize: '1.25rem', padding: '16px 28px' }}>Search</button>
         {year && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--muted)', cursor: 'pointer', flexShrink: 0 }}>
-            <input type="checkbox" checked={filterByYear} onChange={e => setFilterByYear(e.target.checked)} />
+          <label
+            style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              fontSize: '1.25rem', padding: '16px 20px',
+              flexShrink: 0, cursor: 'pointer', userSelect: 'none',
+              border: '1px solid', borderRadius: 'var(--radius)',
+              borderColor: filterByYear ? 'var(--border-hover)' : 'var(--border)',
+              background: filterByYear ? 'var(--surface-raised)' : 'var(--surface)',
+              color: filterByYear ? 'var(--text)' : 'var(--muted)',
+              transition: 'border-color 0.1s, background 0.1s, color 0.1s',
+            }}
+            onMouseEnter={e => { if (!filterByYear) { e.currentTarget.style.borderColor = 'var(--border-hover)'; e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.background = 'var(--surface-raised)' } }}
+            onMouseLeave={e => { if (!filterByYear) { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'var(--surface)' } }}
+          >
+            <input type="checkbox" checked={filterByYear} onChange={e => setFilterByYear(e.target.checked)} style={{ display: 'none' }} />
             {year} only
           </label>
         )}
       </div>
 
       {loading && <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: '12px' }}>Searching…</p>}
+
+      {!loading && searchedQuery && results.length === 0 && (
+        <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: '12px' }}>
+          No albums found for &ldquo;{searchedQuery}&rdquo;.
+        </p>
+      )}
 
       {results.length > 0 && (
         <ul style={{ marginTop: '12px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
@@ -63,6 +100,8 @@ function AlbumSearch({ onAdd, year }) {
                 padding: '10px 14px',
                 borderTop: i > 0 ? '1px solid var(--border)' : 'none',
                 background: 'var(--surface)',
+                opacity: fading.has(album.id) ? 0 : 1,
+                transition: 'opacity 0.3s ease',
               }}
             >
               <img
@@ -87,15 +126,17 @@ function AlbumSearch({ onAdd, year }) {
                 </div>
               </div>
               <button
-                onClick={() => onAdd({
-                  title: album.title,
-                  artist: album['artist-credit']?.[0]?.name || 'Unknown Artist',
-                  mbid: album.id,
-                  cover_url: `https://coverartarchive.org/release-group/${album.id}/front`
-                })}
-                style={{ flexShrink: 0 }}
+                onClick={() => handleAdd(album)}
+                disabled={added.has(album.id)}
+                style={{
+                  flexShrink: 0,
+                  ...(added.has(album.id) ? {
+                    color: '#4caf85', borderColor: 'rgba(76,175,133,0.4)',
+                    background: 'rgba(76,175,133,0.08)', cursor: 'default',
+                  } : {}),
+                }}
               >
-                + Add
+                {added.has(album.id) ? '✓ Added' : '+ Add'}
               </button>
             </li>
           ))}

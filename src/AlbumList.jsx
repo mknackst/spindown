@@ -5,7 +5,7 @@ import { checkPitchforkUrl } from './pitchfork'
 
 const PLATFORMS = [
   { id: 'bandcamp', name: 'Bandcamp',    color: '#1DA0C3', search: (a, t) => `https://bandcamp.com/search?q=${encodeURIComponent(a + ' ' + t)}` },
-  { id: 'qobuz',    name: 'Qobuz',       color: '#002DAA', search: (a, t) => `https://www.qobuz.com/search?q=${encodeURIComponent(a + ' ' + t)}` },
+  { id: 'qobuz',    name: 'Qobuz',       color: '#002DAA', search: (a, t) => `https://www.qobuz.com/us-en/search?q=${encodeURIComponent(a + ' ' + t)}` },
   { id: 'apple',    name: 'Apple Music', color: '#FC3C44', search: (a, t) => `https://music.apple.com/search?term=${encodeURIComponent(a + ' ' + t)}` },
   { id: 'spotify',  name: 'Spotify',     color: '#1DB954', search: (a, t) => `https://open.spotify.com/search/${encodeURIComponent(a + ' ' + t)}` },
 ]
@@ -27,6 +27,7 @@ function AlbumList({ userId, year }) {
   const [loading, setLoading] = useState(true)
   const [dragFrom, setDragFrom] = useState(null)
   const [dragTo, setDragTo] = useState(null)
+  const [showDragHint, setShowDragHint] = useState(() => !localStorage.getItem(`sd-dragged-${userId}`))
 
   const albumsRef = useRef([])
   const triedItunesRef = useRef(new Set())
@@ -132,6 +133,10 @@ function AlbumList({ userId, year }) {
   async function handleDragEnd(result) {
     setDragFrom(null)
     setDragTo(null)
+    if (showDragHint) {
+      localStorage.setItem(`sd-dragged-${userId}`, '1')
+      setShowDragHint(false)
+    }
     if (!result.destination) return
     const reordered = Array.from(albums)
     const [moved] = reordered.splice(result.source.index, 1)
@@ -156,7 +161,8 @@ function AlbumList({ userId, year }) {
   }
 
   async function handleScoreCommit(id, value) {
-    const score = Math.min(10, Math.max(1, Number(value)))
+    const current = albumsRef.current.find(a => a.id === id)?.weighted_score
+    const score = current === Number(value) ? 0 : Math.min(10, Math.max(1, Number(value)))
     setAlbums(albumsRef.current.map(a => a.id === id ? { ...a, weighted_score: score } : a))
     await supabase.from('albums').update({ weighted_score: score }).eq('id', id)
   }
@@ -179,7 +185,24 @@ function AlbumList({ userId, year }) {
 
   return (
     <div>
-      <h2 style={{ marginBottom: '16px', fontSize: '2rem' }}>My {year} Year-End List</h2>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '16px', marginBottom: '16px' }}>
+        <h2 style={{ fontSize: '2rem' }}>My {year} Year-End List</h2>
+        {albums.length > 1 && (
+          <span style={{
+            fontSize: '0.72rem', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '4px',
+            opacity: showDragHint ? 1 : 0,
+            transition: 'opacity 0.5s ease',
+            pointerEvents: 'none',
+            whiteSpace: 'nowrap',
+          }}>
+            <svg width="10" height="10" viewBox="0 0 10 16" fill="currentColor">
+              <circle cx="3" cy="2.5" r="1.5"/><circle cx="3" cy="8" r="1.5"/><circle cx="3" cy="13.5" r="1.5"/>
+              <circle cx="7" cy="2.5" r="1.5"/><circle cx="7" cy="8" r="1.5"/><circle cx="7" cy="13.5" r="1.5"/>
+            </svg>
+            Drag to reorder
+          </span>
+        )}
+      </div>
 
       <DragDropContext onDragEnd={handleDragEnd} onDragUpdate={handleDragUpdate}>
         <Droppable droppableId="album-list">
@@ -236,7 +259,7 @@ function AlbumList({ userId, year }) {
                           onClick={() => handleDelete(album.id)}
                           title="Remove"
                           style={{
-                            position: 'absolute', top: '12px', right: '0',
+                            position: 'absolute', top: '12px', right: '10px',
                             width: '30px', height: '30px',
                             padding: 0,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -253,7 +276,7 @@ function AlbumList({ userId, year }) {
                           ×
                         </button>
 
-                        <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ flex: 1, minWidth: 0, paddingRight: '48px' }}>
                           {index === 0 && (
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.7rem', fontWeight: '600', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#c8a03c', marginBottom: '6px' }}>
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
@@ -325,6 +348,9 @@ function AlbumList({ userId, year }) {
                                 <button
                                   key={n}
                                   onClick={() => handleScoreCommit(album.id, n)}
+                                  data-active={active ? 'true' : ''}
+                                  onMouseEnter={e => { if (!e.currentTarget.dataset.active) { e.currentTarget.style.borderColor = 'var(--border-hover)'; e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.background = 'var(--surface-raised)' } }}
+                                  onMouseLeave={e => { if (!e.currentTarget.dataset.active) { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'var(--surface)' } }}
                                   style={{
                                     width: '32px', height: '32px',
                                     padding: 0,
