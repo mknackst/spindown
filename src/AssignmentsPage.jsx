@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import { checkPitchforkUrl } from './pitchfork'
-
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
@@ -19,85 +18,75 @@ function AssignmentsPage({ userId, year, onAdd }) {
   const [reviews, setReviews] = useState({})
   const [scores, setScores] = useState({})
   const [completing, setCompleting] = useState(null)
-  const fetchedIdsRef = useRef(new Set())
-
-  useEffect(() => { fetchQueue() }, [year])
+  const loadedYearRef = useRef(null)
 
   useEffect(() => {
-    if (queue.length === 0) return
-    let cancelled = false
-    const toFetch = queue.filter(i => !fetchedIdsRef.current.has(i.id))
-    if (toFetch.length === 0) return
-    toFetch.forEach(i => fetchedIdsRef.current.add(i.id))
+    if (loadedYearRef.current === year) return
+    loadedYearRef.current = year
 
-    async function fetchAppleLinks() {
-      for (const item of toFetch) {
-        if (cancelled) break
-        try {
-          const q = encodeURIComponent(`${item.artist} ${item.title}`)
-          const res = await fetch(`https://itunes.apple.com/search?term=${q}&entity=album&limit=1`)
-          const data = await res.json()
-          const url = data.results?.[0]?.collectionViewUrl
-          if (url && !cancelled) setLinks(prev => ({ ...prev, [item.id]: { ...prev[item.id], apple: url } }))
-        } catch {}
-        await new Promise(r => setTimeout(r, 200))
-      }
-    }
+    async function run() {
+      const { data, error } = await supabase
+        .from('listening_queue')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'pending')
+        .eq('year', year)
+        .order('created_at', { ascending: true })
+      if (error) { console.error(error); setLoading(false); return }
+      const items = data || []
+      setQueue(items)
+      setLoading(false)
 
-    async function fetchSpotifyLinks() {
-      const updates = {}
-      for (const item of toFetch) {
-        if (cancelled) break
+      // Spotify: fetch direct URLs for items missing them
+      const spotifyUpdates = {}
+      for (const item of items) {
         if (item.spotify_url) continue
         try {
           const res = await fetch(
             `${SUPABASE_URL}/functions/v1/spotify-search?artist=${encodeURIComponent(item.artist)}&title=${encodeURIComponent(item.title)}`,
             { headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY } }
           )
-          if (!res.ok) continue
-          const data = await res.json()
-          if (data?.spotify_url) updates[item.id] = data.spotify_url
+          if (res.ok) {
+            const d = await res.json()
+            if (d?.spotify_url) {
+              spotifyUpdates[item.id] = d.spotify_url
+              supabase.from('listening_queue').update({ spotify_url: d.spotify_url }).eq('id', item.id)
+            }
+          }
         } catch {}
         await new Promise(r => setTimeout(r, 250))
       }
-      if (!cancelled && Object.keys(updates).length > 0) {
+      if (Object.keys(spotifyUpdates).length > 0) {
         setLinks(prev => {
           const next = { ...prev }
-          for (const [id, url] of Object.entries(updates)) {
-            next[id] = { ...next[id], spotify: url }
-          }
+          for (const [id, url] of Object.entries(spotifyUpdates)) next[id] = { ...next[id], spotify: url }
           return next
         })
       }
-    }
 
-    async function fetchPitchforkLinks() {
-      for (const item of toFetch) {
-        if (cancelled) break
+      // Apple Music: fetch direct URLs
+      for (const item of items) {
+        try {
+          const q = encodeURIComponent(`${item.artist} ${item.title}`)
+          const res = await fetch(`https://itunes.apple.com/search?term=${q}&entity=album&limit=1`)
+          const d = await res.json()
+          const url = d.results?.[0]?.collectionViewUrl
+          if (url) setLinks(prev => ({ ...prev, [item.id]: { ...prev[item.id], apple: url } }))
+        } catch {}
+        await new Promise(r => setTimeout(r, 200))
+      }
+
+      // Pitchfork: check for review pages
+      for (const item of items) {
         const url = await checkPitchforkUrl(item.artist, item.title)
-        if (url && !cancelled) setLinks(prev => ({ ...prev, [item.id]: { ...prev[item.id], pitchfork: url } }))
+        if (url) setLinks(prev => ({ ...prev, [item.id]: { ...prev[item.id], pitchfork: url } }))
         await new Promise(r => setTimeout(r, 300))
       }
     }
 
-    fetchAppleLinks()
-    fetchSpotifyLinks()
-    fetchPitchforkLinks()
-    return () => { cancelled = true }
-  }, [queue])
+    run()
+  }, [year])
 
-  async function fetchQueue() {
-    const { data, error } = await supabase
-      .from('listening_queue')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('status', 'pending')
-      .eq('year', year)
-      .order('created_at', { ascending: true })
-    if (error) console.error(error)
-    else setQueue(data || [])
-    setLoading(false)
-  }
 
   async function handleComplete(item) {
     setCompleting(item.id)
@@ -126,7 +115,7 @@ function AssignmentsPage({ userId, year, onAdd }) {
   return (
     <div style={{ maxWidth: '680px' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', marginBottom: '6px' }}>
-        <h2 style={{ margin: 0, fontSize: '2rem' }}>Listening Assignments</h2>
+        <h2 style={{ margin: 0, fontSize: '2rem' }}>Up Next</h2>
         {queue.length > 0 && (
           <span style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{queue.length} pending</span>
         )}
@@ -158,9 +147,10 @@ function AssignmentsPage({ userId, year, onAdd }) {
             <div style={{ padding: '24px', display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 {item.cover_url
-                  ? <img src={item.cover_url} alt={item.title} width={120} height={120} style={{ objectFit: 'cover', borderRadius: '8px', display: 'block' }} />
-                  : <div style={{ width: 120, height: 120, background: 'var(--border)', borderRadius: '8px' }} />
+                  ? <img src={item.cover_url} alt={item.title} width={120} height={120} style={{ objectFit: 'cover', borderRadius: '8px', display: 'block' }} onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block' }} />
+                  : null
                 }
+                <div style={{ width: 120, height: 120, background: 'var(--border)', borderRadius: '8px', display: item.cover_url ? 'none' : 'block' }} />
                 <div style={{
                   position: 'absolute', top: -8, left: -8,
                   width: 26, height: 26, borderRadius: '50%',

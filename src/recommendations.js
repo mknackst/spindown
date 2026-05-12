@@ -40,9 +40,12 @@ async function itunesAlbumsForYear(artist, year) {
     const q = encodeURIComponent(artist)
     const res = await fetch(`https://itunes.apple.com/search?term=${q}&entity=album&attribute=artistTerm&limit=25`)
     const data = await res.json()
+    const skipPattern = /\b(single|remix|live|acoustic|instrumental|deluxe|edition|remaster)\b/i
     return (data.results || []).filter(r =>
       r.wrapperType === 'collection' &&
-      (r.releaseDate || '').startsWith(String(year))
+      r.collectionType === 'Album' &&
+      (r.releaseDate || '').startsWith(String(year)) &&
+      !skipPattern.test(r.collectionName)
     ).map(r => ({
       id: null,
       title: r.collectionName,
@@ -131,6 +134,21 @@ export async function generateRecommendations(userId, year) {
       skip.add(key)
       break
     }
+  }
+
+  for (const rec of recommendations) {
+    if (rec.spotify_url) continue
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/functions/v1/spotify-search?artist=${encodeURIComponent(rec.artist)}&title=${encodeURIComponent(rec.title)}`,
+        { headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'apikey': SUPABASE_ANON_KEY } }
+      )
+      if (res.ok) {
+        const data = await res.json()
+        if (data?.spotify_url) rec.spotify_url = data.spotify_url
+      }
+    } catch {}
+    await sleep(250)
   }
 
   console.log('[recs] inserting', recommendations.length, 'recommendations')

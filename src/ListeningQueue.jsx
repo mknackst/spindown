@@ -56,7 +56,7 @@ function ListeningQueue({ userId, onAdd, refreshTrigger, year, onViewAll }) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '4px' }}>
-        <h2 style={{ margin: 0 }}>Listening Assignments</h2>
+        <h2 style={{ margin: 0 }}>Up Next</h2>
         {!loading && queue.length > 0 && (
           <span style={{ fontSize: '0.72rem', color: 'var(--muted)', fontWeight: '500' }}>
             {queue.length} pending
@@ -71,7 +71,7 @@ function ListeningQueue({ userId, onAdd, refreshTrigger, year, onViewAll }) {
 
       {!loading && queue.length === 0 && (
         <p style={{ color: 'var(--muted)', fontSize: '0.85rem', lineHeight: '1.6' }}>
-          Add albums to your list to receive listening assignments.
+          Add albums to your list to get recommendations for what to listen to next.
         </p>
       )}
 
@@ -136,7 +136,7 @@ function ListeningQueue({ userId, onAdd, refreshTrigger, year, onViewAll }) {
           onMouseEnter={e => { e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.borderColor = 'var(--border-hover)' }}
           onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}
         >
-          Browse all {queue.length} assignment{queue.length !== 1 ? 's' : ''} →
+          View all {queue.length} →
         </button>
       )}
     </div>

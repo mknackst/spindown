@@ -118,7 +118,7 @@ function App() {
             <div style={{ flex: '1 1 0', minWidth: 0 }}>
               <AlbumList key={`${refreshList}-${selectedYear}`} userId={session.user.id} year={selectedYear} />
             </div>
-            <div style={{ flex: '0 0 300px', position: 'sticky', top: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ flex: '0 0 300px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ maxHeight: '65vh', overflowY: 'auto' }}>
                 <ListeningQueue userId={session.user.id} onAdd={handleAddAlbum} refreshTrigger={queueRefresh} year={selectedYear} onViewAll={() => setView('assignments')} />
               </div>
