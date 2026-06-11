@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
+import SimilarListeners from './SimilarListeners'
+import ActivityFeed from './ActivityFeed'
 
 const CURRENT_YEAR = new Date().getFullYear()
 const ALL_YEARS = Array.from({ length: CURRENT_YEAR - 1899 }, (_, i) => CURRENT_YEAR - i) // current year → 1900
@@ -108,7 +110,7 @@ function YearWheel({ existingYears, onSelect, onCancel }) {
   )
 }
 
-function Dashboard({ userId, onOpenList, onOpenAssignments }) {
+function Dashboard({ userId, username, onOpenList, onOpenAssignments, onOpenDiscovery }) {
   const [lists, setLists] = useState([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -245,29 +247,30 @@ function Dashboard({ userId, onOpenList, onOpenAssignments }) {
                 <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>
                   {count} album{count !== 1 ? 's' : ''}
                 </div>
-                {assignments > 0 && (
-                  <button
-                    onClick={e => { e.stopPropagation(); onOpenAssignments(year) }}
-                    style={{
-                      fontSize: '0.7rem',
-                      fontWeight: '600',
-                      padding: '2px 8px',
-                      borderRadius: '20px',
-                      background: 'var(--accent, #7c6fcd)',
-                      color: '#fff',
-                      border: 'none',
-                      cursor: 'pointer',
-                      lineHeight: '1.6',
-                    }}
-                  >
-                    {assignments} pending
-                  </button>
-                )}
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  {assignments > 0 && (
+                    <button
+                      onClick={e => { e.stopPropagation(); onOpenAssignments(year) }}
+                      style={{ fontSize: '0.7rem', fontWeight: '600', padding: '2px 8px', borderRadius: '20px', background: 'var(--accent, #7c6fcd)', color: '#fff', border: 'none', cursor: 'pointer', lineHeight: '1.6' }}
+                    >
+                      {assignments} pending
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         ))}
       </div>
+
+      <ActivityFeed userId={userId} />
+
+      <SimilarListeners
+        userId={userId}
+        username={username}
+        year={lists[0]?.year}
+        onSeeAll={() => onOpenDiscovery(lists[0]?.year)}
+      />
     </div>
   )
 }

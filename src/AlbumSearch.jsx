@@ -8,6 +8,11 @@ function AlbumSearch({ onAdd, year }) {
   const [filterByYear, setFilterByYear] = useState(true)
   const [added, setAdded] = useState(new Set())
   const [fading, setFading] = useState(new Set())
+  const [showManual, setShowManual] = useState(false)
+  const [manualTitle, setManualTitle] = useState('')
+  const [manualArtist, setManualArtist] = useState('')
+  const [manualCoverUrl, setManualCoverUrl] = useState('')
+  const [manualAdded, setManualAdded] = useState(false)
   const containerRef = useRef(null)
 
   useEffect(() => {
@@ -32,6 +37,24 @@ function AlbumSearch({ onAdd, year }) {
       setFading(prev => new Set(prev).add(album.id))
       setTimeout(() => setResults(prev => prev.filter(r => r.id !== album.id)), 300)
     }, 800)
+  }
+
+  function handleManualAdd() {
+    if (!manualTitle.trim() || !manualArtist.trim()) return
+    onAdd({
+      title: manualTitle.trim(),
+      artist: manualArtist.trim(),
+      mbid: null,
+      cover_url: manualCoverUrl.trim() || null,
+    })
+    setManualAdded(true)
+    setTimeout(() => {
+      setManualAdded(false)
+      setShowManual(false)
+      setManualTitle('')
+      setManualArtist('')
+      setManualCoverUrl('')
+    }, 1200)
   }
 
   async function handleSearch() {
@@ -83,9 +106,69 @@ function AlbumSearch({ onAdd, year }) {
       {loading && <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: '12px' }}>Searching…</p>}
 
       {!loading && searchedQuery && results.length === 0 && (
-        <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: '12px' }}>
-          No albums found for &ldquo;{searchedQuery}&rdquo;.
-        </p>
+        <div style={{ marginTop: '12px' }}>
+          <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginBottom: '8px' }}>
+            No albums found for &ldquo;{searchedQuery}&rdquo;.{' '}
+            {!showManual && (
+              <button
+                onClick={() => setShowManual(true)}
+                style={{ background: 'none', border: 'none', padding: 0, color: 'var(--accent)', fontWeight: '500', cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline' }}
+              >
+                Add it manually
+              </button>
+            )}
+          </p>
+          {showManual && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '14px 16px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface)' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="Album title *"
+                  value={manualTitle}
+                  onChange={e => setManualTitle(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleManualAdd()}
+                  style={{ flex: 1, fontSize: '0.9rem', padding: '8px 12px' }}
+                />
+                <input
+                  type="text"
+                  placeholder="Artist *"
+                  value={manualArtist}
+                  onChange={e => setManualArtist(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleManualAdd()}
+                  style={{ flex: 1, fontSize: '0.9rem', padding: '8px 12px' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="Cover image URL (optional)"
+                  value={manualCoverUrl}
+                  onChange={e => setManualCoverUrl(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleManualAdd()}
+                  style={{ flex: 1, fontSize: '0.9rem', padding: '8px 12px' }}
+                />
+                <button
+                  onClick={handleManualAdd}
+                  disabled={!manualTitle.trim() || !manualArtist.trim() || manualAdded}
+                  style={{
+                    flexShrink: 0, fontSize: '0.9rem', padding: '8px 20px',
+                    ...(manualAdded ? { color: '#4caf85', borderColor: 'rgba(76,175,133,0.4)', background: 'rgba(76,175,133,0.08)' } : {}),
+                  }}
+                >
+                  {manualAdded ? '✓ Added' : '+ Add'}
+                </button>
+                <button
+                  onClick={() => setShowManual(false)}
+                  style={{ flexShrink: 0, fontSize: '0.9rem', padding: '8px 14px', color: 'var(--muted)', background: 'transparent', borderColor: 'transparent' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.background = 'var(--surface-raised)' }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'transparent' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {results.length > 0 && (
@@ -140,6 +223,65 @@ function AlbumSearch({ onAdd, year }) {
               </button>
             </li>
           ))}
+          <li style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', background: 'var(--surface)' }}>
+            {!showManual ? (
+              <button
+                onClick={() => setShowManual(true)}
+                style={{ background: 'none', border: 'none', padding: 0, color: 'var(--accent)', fontWeight: '500', cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline' }}
+              >
+                Don't see it? Add manually
+              </button>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    placeholder="Album title *"
+                    value={manualTitle}
+                    onChange={e => setManualTitle(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleManualAdd()}
+                    style={{ flex: 1, fontSize: '0.9rem', padding: '8px 12px' }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Artist *"
+                    value={manualArtist}
+                    onChange={e => setManualArtist(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleManualAdd()}
+                    style={{ flex: 1, fontSize: '0.9rem', padding: '8px 12px' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    placeholder="Cover image URL (optional)"
+                    value={manualCoverUrl}
+                    onChange={e => setManualCoverUrl(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleManualAdd()}
+                    style={{ flex: 1, fontSize: '0.9rem', padding: '8px 12px' }}
+                  />
+                  <button
+                    onClick={handleManualAdd}
+                    disabled={!manualTitle.trim() || !manualArtist.trim() || manualAdded}
+                    style={{
+                      flexShrink: 0, fontSize: '0.9rem', padding: '8px 20px',
+                      ...(manualAdded ? { color: '#4caf85', borderColor: 'rgba(76,175,133,0.4)', background: 'rgba(76,175,133,0.08)' } : {}),
+                    }}
+                  >
+                    {manualAdded ? '✓ Added' : '+ Add'}
+                  </button>
+                  <button
+                    onClick={() => setShowManual(false)}
+                    style={{ flexShrink: 0, fontSize: '0.9rem', padding: '8px 14px', color: 'var(--muted)', background: 'transparent', borderColor: 'transparent' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.background = 'var(--surface-raised)' }}
+                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.background = 'transparent' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </li>
         </ul>
       )}
     </div>

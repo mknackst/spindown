@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import CommentThread from './CommentThread'
 
 function PublicList({ username, year }) {
   const [albums, setAlbums] = useState([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
-
   const [profile, setProfile] = useState(null)
+  const [myUsername, setMyUsername] = useState(null)
+  const [userId, setUserId] = useState(null)
+  const [isFollowing, setIsFollowing] = useState(false)
+  const [followLoading, setFollowLoading] = useState(false)
+  const [compareInput, setCompareInput] = useState('')
 
   useEffect(() => {
     async function load() {
@@ -29,9 +34,36 @@ function PublicList({ username, year }) {
       if (!data?.length) { setNotFound(true); setLoading(false); return }
       setAlbums(data)
       setLoading(false)
+
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const uid = session.user.id
+      setUserId(uid)
+
+      if (uid !== prof.user_id) {
+        const [{ data: followRow }, { data: myProfile }] = await Promise.all([
+          supabase.from('follows').select('id').eq('follower_id', uid).eq('following_id', prof.user_id).maybeSingle(),
+          supabase.from('profiles').select('username').eq('user_id', uid).single(),
+        ])
+        setIsFollowing(!!followRow)
+        if (myProfile?.username) setMyUsername(myProfile.username)
+      }
     }
     load()
   }, [username, year])
+
+  async function handleFollow() {
+    if (!userId || !profile || followLoading) return
+    setFollowLoading(true)
+    if (isFollowing) {
+      await supabase.from('follows').delete().eq('follower_id', userId).eq('following_id', profile.user_id)
+      setIsFollowing(false)
+    } else {
+      await supabase.from('follows').insert({ follower_id: userId, following_id: profile.user_id })
+      setIsFollowing(true)
+    }
+    setFollowLoading(false)
+  }
 
   return (
     <div style={{ maxWidth: '680px', margin: '0 auto' }}>
@@ -86,6 +118,20 @@ function PublicList({ username, year }) {
                 </div>
               )}
             </div>
+            {userId && userId !== profile?.user_id && (
+              <button
+                onClick={handleFollow}
+                disabled={followLoading}
+                style={{
+                  flexShrink: 0, fontSize: '0.82rem', padding: '7px 18px',
+                  ...(isFollowing ? { color: 'var(--muted)', background: 'var(--surface)', borderColor: 'var(--border)' } : {}),
+                }}
+                onMouseEnter={e => { if (isFollowing) { e.currentTarget.style.borderColor = '#e05c5c'; e.currentTarget.style.color = '#e05c5c' } }}
+                onMouseLeave={e => { if (isFollowing) { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--muted)' } }}
+              >
+                {isFollowing ? 'Following' : 'Follow'}
+              </button>
+            )}
           </div>
 
           <div style={{ marginBottom: '24px' }}>
@@ -146,14 +192,58 @@ function PublicList({ username, year }) {
                     </span>
                   )}
                   {album.review && (
-                    <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--muted)', lineHeight: 1.6 }}>
+                    <p style={{ margin: '0 0 4px', fontSize: '0.82rem', color: 'var(--muted)', lineHeight: 1.6 }}>
                       {album.review}
                     </p>
                   )}
+                  <CommentThread albumId={album.id} currentUserId={userId} />
                 </div>
               </li>
             ))}
           </ul>
+
+          {/* List-level discussion */}
+          <div style={{ marginTop: '40px', padding: '20px 24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+            <CommentThread listOwnerId={profile?.user_id} listYear={year} currentUserId={userId} />
+          </div>
+
+          {/* Compare section */}
+          <div style={{ marginTop: '16px', padding: '24px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: '0.95rem', fontWeight: '600' }}>Compare lists</h3>
+            <p style={{ margin: '0 0 14px', fontSize: '0.8rem', color: 'var(--muted)' }}>
+              {myUsername
+                ? <>See how your list stacks up against @{username}&apos;s.</>
+                : <>Enter a Spindown username to compare their list with this one.</>}
+            </p>
+            {myUsername ? (
+              <a
+                href={`/compare/${username}/${myUsername}/${year}`}
+                style={{ display: 'inline-block', padding: '9px 18px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', fontSize: '0.85rem', fontWeight: '500', textDecoration: 'none', transition: 'border-color 0.1s' }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-hover)'}
+                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+              >
+                Compare with @{myUsername} →
+              </a>
+            ) : (
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="username"
+                  value={compareInput}
+                  onChange={e => setCompareInput(e.target.value.replace('@', '').toLowerCase())}
+                  onKeyDown={e => { if (e.key === 'Enter' && compareInput.trim()) window.location.href = `/compare/${username}/${compareInput.trim()}/${year}` }}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  onClick={() => { if (compareInput.trim()) window.location.href = `/compare/${username}/${compareInput.trim()}/${year}` }}
+                  disabled={!compareInput.trim()}
+                  style={{ flexShrink: 0 }}
+                >
+                  Compare →
+                </button>
+              </div>
+            )}
+          </div>
 
           <div style={{ marginTop: '48px', paddingTop: '28px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
             <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginBottom: '14px' }}>
