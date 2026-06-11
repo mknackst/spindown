@@ -10,6 +10,8 @@ import ExportPage from './ExportPage'
 import ResetPassword from './ResetPassword'
 import UsernameSetup from './UsernameSetup'
 import PublicList from './PublicList'
+import ComparisonPage from './ComparisonPage'
+import DiscoveryPage from './DiscoveryPage'
 import ProfilePage from './ProfilePage'
 import { generateRecommendations } from './recommendations'
 
@@ -31,6 +33,12 @@ function App() {
   const publicListRoute = (() => {
     const m = window.location.pathname.match(/^\/u\/([^/]+)\/(\d{4})$/)
     return m ? { username: m[1], year: parseInt(m[2]) } : null
+  })()
+
+  // Detect comparison URL: /compare/:username1/:username2/:year
+  const compareRoute = (() => {
+    const m = window.location.pathname.match(/^\/compare\/([^/]+)\/([^/]+)\/(\d{4})$/)
+    return m ? { username1: m[1], username2: m[2], year: parseInt(m[3]) } : null
   })()
 
   useEffect(() => {
@@ -99,6 +107,10 @@ function App() {
   // Render public list page for external visitors (no app chrome)
   if (publicListRoute) {
     return <PublicList username={publicListRoute.username} year={publicListRoute.year} />
+  }
+
+  if (compareRoute) {
+    return <ComparisonPage username1={compareRoute.username1} username2={compareRoute.username2} year={compareRoute.year} />
   }
 
   const needsUsername = session && profileLoaded && !username && !skippedUsername && view !== 'reset-password'
@@ -190,7 +202,22 @@ function App() {
       )}
 
       {!needsUsername && session && view === 'dashboard' && (
-        <Dashboard userId={session.user.id} onOpenList={openList} onOpenAssignments={year => { setSelectedYear(year); setView('assignments') }} />
+        <Dashboard
+          userId={session.user.id}
+          username={username}
+          onOpenList={openList}
+          onOpenAssignments={year => { setSelectedYear(year); setView('assignments') }}
+          onOpenDiscovery={year => { setSelectedYear(year); setView('discovery') }}
+        />
+      )}
+
+      {!needsUsername && session && view === 'discovery' && (
+        <DiscoveryPage
+          userId={session.user.id}
+          username={username}
+          year={selectedYear}
+          onBack={() => setView('dashboard')}
+        />
       )}
 
       {!needsUsername && session && view === 'list' && (
